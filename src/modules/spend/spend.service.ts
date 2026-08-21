@@ -583,3 +583,58 @@ export async function reminderInfo() {
     .executeTakeFirst()
   return { lastRun: row ? (row.value as { at: string; sent: number }) : null }
 }
+
+// ── Presence (the G-Sheet avatar bar) ───────────────────────────────────────
+// In-memory: each open tab pings ~25s; a person drops off 75s after their
+// last ping. Single-process only — fine for one Cloud Run instance / local.
+
+const PRESENCE_TTL_MS = 75_000
+const presence = new Map<string, { name: string; email: string; at: number }>()
+
+export async function presencePing(user: Claims) {
+  const me = await db
+    .selectFrom('users')
+    .select(['name', 'email'])
+    .where('id', '=', user.sub)
+    .executeTakeFirst()
+  const now = Date.now()
+  if (me) presence.set(user.sub, { name: me.name, email: me.email, at: now })
+  const users = [...presence.entries()]
+    .filter(([, v]) => now - v.at < PRESENCE_TTL_MS)
+    .map(([id, v]) => ({ id, name: v.name, email: v.email }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  return { users }
+}
+
+/** Admin: every user with their last login (refresh-token issue) + online-now. */
+export async function loginActivity() {
+  const now = Date.now()
+  const online = new Set(
+    [...presence.entries()].filter(([, v]) => now - v.at < PRESENCE_TTL_MS).map(([id]) => id),
+  )
+  const rows = await db
+    .selectFrom('users')
+    .leftJoin(
+      (eb) =>
+        eb
+          .selectFrom('refresh_tokens')
+          .select(['userId'])
+          .select((qb) => qb.fn.max('createdAt').as('lastLogin'))
+          .groupBy('userId')
+          .as('rt'),
+      (join) => join.onRef('rt.userId', '=', 'users.id'),
+    )
+    .select(['users.id', 'users.name', 'users.email', 'users.role', 'users.isActive'])
+    .select('rt.lastLogin as lastLogin')
+    .orderBy('users.name')
+    .execute()
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    role: r.role,
+    isActive: r.isActive,
+    lastLogin: r.lastLogin ? new Date(r.lastLogin as unknown as string).toISOString() : null,
+    online: online.has(r.id),
+  }))
+}

@@ -76,3 +76,11 @@ export const sendReminders: RequestHandler = async (req, res) => {
 export const reminderInfo: RequestHandler = async (_req, res) => {
   ok(res, await service.reminderInfo())
 }
+
+export const presencePing: RequestHandler = async (req, res) => {
+  ok(res, await service.presencePing(req.user!))
+}
+
+export const loginActivity: RequestHandler = async (_req, res) => {
+  ok(res, await service.loginActivity())
+}

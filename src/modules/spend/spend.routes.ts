@@ -35,4 +35,8 @@ r.put('/settings', admin, controller.saveSettings)
 r.post('/reminders/send', admin, controller.sendReminders)
 r.get('/reminders', admin, controller.reminderInfo)
 
+// Presence (avatar bar) + admin login-activity panel.
+r.post('/presence', anyUser, controller.presencePing)
+r.get('/logins', admin, controller.loginActivity)
+
 export const spendRouter = r
