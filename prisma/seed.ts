@@ -18,10 +18,7 @@ const USERS: { name: string; email: string; role: Role }[] = [
   { name: 'Varun Limaye', email: 'varun@mesaschool.co', role: 'MEMBER' },
 ]
 
-const CARDS: { email: string; number: string; label: string }[] = [
-  { email: 'gaurav@mesaschool.co', number: '4315', label: 'Corporate Visa' },
-  { email: 'varun@mesaschool.co', number: '7276', label: 'Corporate Visa' },
-]
+const CARDS: { email: string; number: string; label: string }[] = []
 
 const SETTINGS = {
   categories: ['Transaction charges', 'GST', 'Markup Charges', 'Software', 'Travel', 'Others'],
@@ -34,13 +31,7 @@ const SAMPLE_TXNS: {
   effectiveDate: string
   amountPaise: number
   description: string
-}[] = [
-  { card: '4315', effectiveDate: '2026-08-10', amountPaise: 4720000, description: 'GOOGLE WORKSPACE SUBSCRIPTION' },
-  { card: '4315', effectiveDate: '2026-08-12', amountPaise: 129900, description: 'CANVA PTY LTD' },
-  { card: '4315', effectiveDate: '2026-08-15', amountPaise: 35400, description: 'GST' },
-  { card: '7276', effectiveDate: '2026-08-11', amountPaise: 1852000, description: 'MAKEMYTRIP FLIGHT BLR-DEL' },
-  { card: '7276', effectiveDate: '2026-08-14', amountPaise: 76700, description: 'ISSUER MARKUP ASSESSMENT' },
-]
+}[] = []
 
 const AUTO_RULES: Record<string, { cat: string; tag: string }> = {
   gst: { cat: 'GST', tag: 'Others' },
