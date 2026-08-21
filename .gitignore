@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!.env.example
+coverage/
+.DS_Store
+# App Engine config is rendered with secrets at deploy time — never commit it.
+app.yaml
+# GCP service-account key — secret credentials, never commit.
+mesa-startup-lab-ddbe5ec10dbc.json
+*-service-account*.json

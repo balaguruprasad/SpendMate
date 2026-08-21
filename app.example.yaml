@@ -1,0 +1,57 @@
+# App Engine (Standard, Node.js) config — REFERENCE / template.
+#
+# The real app.yaml is rendered by cloudbuild.yaml from Secret Manager + substitutions
+# (so secrets never live in git). For a manual deploy, copy this to app.yaml, fill the
+# values, then run:  gcloud app deploy app.yaml
+#
+# app.yaml is gitignored because it contains secrets.
+
+runtime: nodejs22
+
+instance_class: F2
+
+automatic_scaling:
+  # Keep one instance warm to avoid cold-start latency on the first request/upload.
+  min_instances: 1
+  max_instances: 4
+  max_concurrent_requests: 40
+
+# Cloud SQL connector: App Engine has no stable egress IP, so connect over the unix socket
+# instead of the DB's public IP. Set this to your instance's connection name
+# (gcloud sql instances describe <INSTANCE> --format='value(connectionName)').
+beta_settings:
+  cloud_sql_instances: mesa-startup-lab:asia-south1:YOUR_INSTANCE
+
+env_variables:
+  NODE_ENV: "production"
+
+  # Socket-form connection string (note the host= query param, no sslmode — the socket is already private):
+  #   postgresql://master_admin:<URL-ENCODED-PASSWORD>@/mesa-finance?host=/cloudsql/mesa-startup-lab:asia-south1:YOUR_INSTANCE
+  DATABASE_URL: "postgresql://master_admin:PASSWORD@/mesa-finance?host=/cloudsql/mesa-startup-lab:asia-south1:YOUR_INSTANCE"
+  DB_POOL_MAX: "10"
+  # Over the Cloud SQL unix socket TLS is not used — leave DB_SSL off.
+  DB_SSL: "false"
+
+  JWT_ACCESS_SECRET: "change-me-min-32-chars-xxxxxxxxxxxxxx"
+  JWT_REFRESH_SECRET: "change-me-different-min-32-chars-xxxxx"
+
+  # Production frontend origin(s), comma-separated.
+  CORS_ORIGINS: "https://finance.mesaschool.co.in"
+
+  DOCS_USERNAME: "gaurav@mesaschool.co"
+  DOCS_PASSWORD: "change-me"
+
+  LOG_LEVEL: "info"
+
+  # Google Cloud Storage (file attachments).
+  GCS_BUCKET_NAME: "mesa_tech_assets"
+  GCS_BUCKET_PREFIX: "mesa-finance"
+  GCS_PROJECT_ID: "mesa-startup-lab"
+  # true = browser PUTs directly to GCS via a pre-signed URL (fast, no double-hop through App Engine).
+  # Requires: runtime SA has roles/iam.serviceAccountTokenCreator on itself (to sign), the
+  # IAM Credentials API enabled, and bucket CORS allowing PUT from the frontend origin.
+  GCS_USE_SIGNED_URLS: "true"
+
+# PORT is provided by App Engine automatically (8080) — do NOT set it here.
+# GCS_SERVICE_ACCOUNT_PATH is intentionally omitted — on App Engine the runtime
+# service account (ADC) is used instead of a key file.
