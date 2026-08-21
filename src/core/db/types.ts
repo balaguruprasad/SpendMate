@@ -97,6 +97,11 @@ export type Transaction = {
      * * Comma-joined values of the configurable Tag dropdown (e.g. Departments).
      */
     tags: Generated<string>;
+    /**
+     * * Accounts sign-off after the invoice lands: reviewed + accounting done.
+     */
+    reviewedAt: Timestamp | null;
+    reviewedBy: string | null;
     createdAt: Generated<Timestamp>;
     updatedAt: Timestamp;
 };

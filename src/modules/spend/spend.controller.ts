@@ -77,6 +77,16 @@ export const reminderInfo: RequestHandler = async (_req, res) => {
   ok(res, await service.reminderInfo())
 }
 
+export const setReviewed: RequestHandler<IdParam> = async (req, res) => {
+  const on = (req.body as { on?: boolean } | undefined)?.on !== false
+  ok(res, await service.setReviewed(req.params.id, on, req.user!))
+}
+
+export const weeklyReminders: RequestHandler = async (req, res) => {
+  const on = Boolean((req.body as { on?: boolean } | undefined)?.on)
+  ok(res, await service.setWeeklyReminders(on, req.user!))
+}
+
 export const presencePing: RequestHandler = async (req, res) => {
   ok(res, await service.presencePing(req.user!))
 }

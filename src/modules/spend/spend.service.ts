@@ -125,8 +125,14 @@ const AUTO_CAT_RULES: Record<string, { cat: string; tag: string }> = {
   'issuer markup assessment': { cat: 'Markup Charges', tag: 'Others' },
 }
 
-function autoRule(description: string): { cat: string; tag: string } | null {
-  return AUTO_CAT_RULES[description.trim().toLowerCase()] ?? null
+/** Bank penny-testing: nominal debit/credit amounts (≤ ₹10) need no invoice. */
+const PENNY_MAX_PAISE = 1000
+
+function autoRule(description: string, amountPaise: number): { cat: string; tag: string } | null {
+  const byDesc = AUTO_CAT_RULES[description.trim().toLowerCase()]
+  if (byDesc) return byDesc
+  if (Math.abs(amountPaise) <= PENNY_MAX_PAISE) return { cat: 'Penny testing', tag: 'Others' }
+  return null
 }
 
 // ── Pending rule ────────────────────────────────────────────────────────────
@@ -182,6 +188,7 @@ export interface TransactionPublic {
   invoiceUrl: string
   tags: string
   pending: boolean
+  reviewed: boolean
   updatedAt: string
 }
 
@@ -204,6 +211,7 @@ function toPublic(r: repo.TransactionListRow, tagRequired: boolean): Transaction
     invoiceUrl: r.invoiceUrl,
     tags: r.tags,
     pending: isRowPending(r, tagRequired),
+    reviewed: r.reviewedAt !== null,
     updatedAt: r.updatedAt.toISOString(),
   }
 }
@@ -260,6 +268,9 @@ export async function updateTransaction(
     if (input.remarks !== undefined) patch.remarks = input.remarks
 
     if (input.category !== undefined) {
+      if (user.role !== 'ADMIN') {
+        throw new ForbiddenError('Categories are set automatically — only an admin can override them.')
+      }
       if (input.category && !settings.categories.includes(input.category)) {
         throw new UnprocessableError('UNKNOWN_CATEGORY', `Unknown category: ${input.category}`)
       }
@@ -343,7 +354,7 @@ export async function importTransactions(input: ImportTransactionsInput, user: C
     let imported = 0
     let autoCategorized = 0
     for (const row of input.rows) {
-      const rule = autoRule(row.description)
+      const rule = autoRule(row.description, row.amountPaise)
       const cardId = matchCard(row.cardNumber, cards)
       await trx
         .insertInto('transactions')
@@ -581,7 +592,104 @@ export async function reminderInfo() {
     .select('value')
     .where('key', '=', 'spend.lastReminder')
     .executeTakeFirst()
-  return { lastRun: row ? (row.value as { at: string; sent: number }) : null }
+  const weekly = await weeklyReminderConfig()
+  return { lastRun: row ? (row.value as { at: string; sent: number }) : null, weeklyOn: weekly.on }
+}
+
+// ── Accounts review ─────────────────────────────────────────────────────────
+// After the invoice lands (or the charge is auto-categorized), the accounts
+// team signs it off: reviewed + accounting done. Admin-only; toggleable.
+
+export async function setReviewed(txnId: string, on: boolean, user: Claims) {
+  return db.transaction().execute(async (trx) => {
+    const txn = await repo.findTransaction(txnId, trx)
+    if (!txn) throw new NotFoundError('Transaction not found')
+    if (on && txn.status === 'PENDING') {
+      throw new ConflictError(
+        'TXN_STILL_PENDING',
+        'This charge is still pending — it needs its invoice (or auto-category) first.',
+      )
+    }
+    await trx
+      .updateTable('transactions')
+      .set(on ? { reviewedAt: new Date(), reviewedBy: user.sub } : { reviewedAt: null, reviewedBy: null })
+      .where('id', '=', txnId)
+      .execute()
+    await writeAudit(trx, {
+      entityType: 'SPEND_TXN',
+      entityId: txnId,
+      action: on ? 'REVIEWED' : 'REVIEW_CLEARED',
+      actorId: user.sub,
+      metadata: { description: txn.description, amountPaise: txn.amountPaise },
+    })
+    return repo.findTransaction(txnId, trx)
+  })
+}
+
+// ── Weekly auto-reminder (Mondays ~9:00 IST) ────────────────────────────────
+
+export async function weeklyReminderConfig() {
+  const row = await db
+    .selectFrom('app_settings')
+    .select('value')
+    .where('key', '=', 'spend.weekly')
+    .executeTakeFirst()
+  const v = (row?.value ?? {}) as { on?: boolean; owner?: string }
+  return { on: Boolean(v.on), owner: v.owner ?? null }
+}
+
+export async function setWeeklyReminders(on: boolean, user: Claims) {
+  const value = JSON.stringify({ on, owner: on ? user.sub : null })
+  await db
+    .insertInto('app_settings')
+    .values({ key: 'spend.weekly', value, updatedAt: new Date() })
+    .onConflict((oc) => oc.column('key').doUpdateSet({ value, updatedAt: new Date() }))
+    .execute()
+  await db.transaction().execute((trx) =>
+    writeAudit(trx, {
+      entityType: 'SPEND_REMINDER',
+      entityId: user.sub,
+      action: on ? 'WEEKLY_ON' : 'WEEKLY_OFF',
+      actorId: user.sub,
+      metadata: {},
+    }),
+  )
+  return weeklyReminderConfig()
+}
+
+/** Fires from a 10-min interval: Monday 9–10am IST, once per day, when on. */
+export async function weeklyReminderTick(): Promise<void> {
+  const cfg = await weeklyReminderConfig()
+  if (!cfg.on || !cfg.owner) return
+  const ist = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour12: false })
+  const now = new Date(ist)
+  if (now.getDay() !== 1 || now.getHours() !== 9) return
+  const today = ist.slice(0, 10)
+  const last = await db
+    .selectFrom('app_settings')
+    .select('value')
+    .where('key', '=', 'spend.weekly.lastAuto')
+    .executeTakeFirst()
+  if ((last?.value as { day?: string } | undefined)?.day === today) return
+  await db
+    .insertInto('app_settings')
+    .values({ key: 'spend.weekly.lastAuto', value: JSON.stringify({ day: today }), updatedAt: new Date() })
+    .onConflict((oc) =>
+      oc.column('key').doUpdateSet({ value: JSON.stringify({ day: today }), updatedAt: new Date() }),
+    )
+    .execute()
+  await sendReminders([], { sub: cfg.owner, role: 'ADMIN', departmentId: null } as Claims)
+}
+
+// Lightweight scheduler — checks every 10 minutes; unref'd so it never keeps
+// the process alive (tests, scripts).
+if (process.env.NODE_ENV !== 'test') {
+  const timer = setInterval(() => {
+    weeklyReminderTick().catch(() => {
+      /* logged via audit on success only; a failed tick just retries */
+    })
+  }, 10 * 60_000)
+  if (typeof timer.unref === 'function') timer.unref()
 }
 
 // ── Presence (the G-Sheet avatar bar) ───────────────────────────────────────

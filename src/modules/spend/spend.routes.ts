@@ -16,6 +16,8 @@ r.get('/transactions', anyUser, controller.listTransactions)
 r.patch('/transactions/:id', anyUser, controller.updateTransaction)
 r.post('/transactions/:id/invoice', anyUser, controller.attachInvoice)
 r.post('/transactions/import', admin, controller.importTransactions)
+// Accounts sign-off: reviewed + accounting done (admin/accounts only).
+r.post('/transactions/:id/review', admin, controller.setReviewed)
 
 // Cards — admin manages who owns which card.
 r.get('/cards', admin, controller.listCards)
@@ -33,6 +35,7 @@ r.put('/settings', admin, controller.saveSettings)
 
 // Reminders — in-app notifications (+ email in prod when SMTP is configured).
 r.post('/reminders/send', admin, controller.sendReminders)
+r.put('/reminders/weekly', admin, controller.weeklyReminders)
 r.get('/reminders', admin, controller.reminderInfo)
 
 // Presence (avatar bar) + admin login-activity panel.

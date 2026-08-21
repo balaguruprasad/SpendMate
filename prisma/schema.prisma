@@ -124,6 +124,9 @@ model Transaction {
   invoiceUrl    String    @default("")
   /** Comma-joined values of the configurable Tag dropdown (e.g. Departments). */
   tags          String    @default("")
+  /** Accounts sign-off after the invoice lands: reviewed + accounting done. */
+  reviewedAt    DateTime? @db.Timestamptz(3)
+  reviewedBy    String?   @db.Uuid
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
 
