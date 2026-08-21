@@ -388,7 +388,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                 <th className="w-10 px-2 pb-1 pt-3" title="Reviewed by accounts" />
               </tr>
               {/* Column filters */}
-              <tr className="border-b">
+              <tr className="border-b text-left">
                 <th className="px-4 pb-2" />
                 <th className="px-4 pb-2">
                   <Input
