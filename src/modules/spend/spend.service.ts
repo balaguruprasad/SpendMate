@@ -477,6 +477,7 @@ export async function addHelper(email: string, user: Claims) {
       throw new ConflictError('TOO_MANY_HELPERS', `You can have at most ${MAX_HELPERS} helpers.`)
     }
     await trx.insertInto('card_helpers').values({ holderId: user.sub, helperId: helper.id }).execute()
+    const helperRole = await trx.selectFrom('users').select('role').where('id','=',helper.id).executeTakeFirst()
     await writeAudit(trx, {
       entityType: 'SPEND_HELPER',
       entityId: user.sub,
@@ -489,7 +490,7 @@ export async function addHelper(email: string, user: Claims) {
       type: 'SPEND_HELPER_ADDED',
       title: 'You can now help with credit-card invoices',
       body: 'A cardholder added you as their invoice helper — their charges now show in SpendMate.',
-      linkPath: '/charges',
+      linkPath: helperRole?.role === 'ADMIN' ? '/admin/charges' : '/member/charges',
     })
     return repo.listHelpersOf(user.sub, trx)
   })
