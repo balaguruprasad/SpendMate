@@ -216,6 +216,22 @@ export function useSetReviewed() {
   });
 }
 
+export function useSetReviewedBulk() {
+  const invalidate = useInvalidateSpend();
+  return useMutation({
+    mutationFn: ({ ids, on }: { ids: string[]; on: boolean }) =>
+      service.setReviewedBulk(ids, on),
+    onSuccess: (r, { on }) => {
+      void invalidate();
+      toast.success(
+        (on ? `${r.updated} charge(s) marked complete.` : `${r.updated} review(s) cleared.`) +
+          (r.skipped ? ` ${r.skipped} still-pending row(s) skipped.` : ""),
+      );
+    },
+    onError: (error) => toast.error(errorMessage(error, "Bulk review failed.")),
+  });
+}
+
 export function useSetWeeklyReminders() {
   const invalidate = useInvalidateSpend();
   return useMutation({

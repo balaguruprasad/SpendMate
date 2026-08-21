@@ -107,6 +107,18 @@ export async function setReviewed(id: string, on: boolean): Promise<SpendTransac
     .data;
 }
 
+export async function setReviewedBulk(
+  ids: string[],
+  on: boolean,
+): Promise<{ updated: number; skipped: number }> {
+  return (
+    await api.post<Enveloped<{ updated: number; skipped: number }>>(
+      "/spend/transactions/review-bulk",
+      { ids, on },
+    )
+  ).data;
+}
+
 export async function setWeeklyReminders(on: boolean): Promise<{ on: boolean }> {
   return (await api.put<Enveloped<{ on: boolean }>>("/spend/reminders/weekly", { on })).data;
 }

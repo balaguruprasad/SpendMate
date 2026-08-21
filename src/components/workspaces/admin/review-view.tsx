@@ -17,14 +17,17 @@ import {
   formatPaise,
   openInvoice,
   useSetReviewed,
+  useSetReviewedBulk,
   useSpendTransactions,
 } from "@/features/spend";
 
 export function ReviewView() {
   const { data, isLoading } = useSpendTransactions();
   const setReviewed = useSetReviewed();
+  const bulk = useSetReviewedBulk();
   const [tab, setTab] = useState<"todo" | "done">("todo");
   const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const { todo, done } = useMemo(() => {
     const rows = (data?.rows ?? []).filter((r) => !r.settlement && !r.pending);
@@ -50,6 +53,28 @@ export function ReviewView() {
 
   const { page, setPage, pageCount, pageRows } = usePagedRows(visible, 20);
 
+  const allVisibleSelected = visible.length > 0 && visible.every((r) => selected.has(r.id));
+
+  function toggleRow(id: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allVisibleSelected ? new Set() : new Set(visible.map((r) => r.id)));
+  }
+
+  function completeSelected() {
+    bulk.mutate(
+      { ids: [...selected], on: tab === "todo" },
+      { onSuccess: () => setSelected(new Set()) },
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl border bg-card p-4 shadow-sm">
@@ -73,6 +98,7 @@ export function ReviewView() {
             onClick={() => {
               setTab(key);
               setPage(1);
+              setSelected(new Set());
             }}
             className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
               tab === key
@@ -92,6 +118,22 @@ export function ReviewView() {
             setPage(1);
           }}
         />
+        <Button
+          className="bg-[#1e4f39] text-white hover:bg-[#173d2c]"
+          disabled={selected.size === 0}
+          loading={bulk.isPending}
+          onClick={completeSelected}
+        >
+          {tab === "todo" ? (
+            <>
+              <Check className="size-4" /> Complete selected ({selected.size})
+            </>
+          ) : (
+            <>
+              <Undo2 className="size-4" /> Undo selected ({selected.size})
+            </>
+          )}
+        </Button>
       </div>
 
       <div className="overflow-x-auto rounded-2xl border bg-card shadow-sm">
@@ -103,6 +145,15 @@ export function ReviewView() {
           <table className="w-full min-w-[64rem] text-sm">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
+                <th className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[#1e4f39]"
+                    checked={allVisibleSelected}
+                    onChange={toggleAll}
+                    title={allVisibleSelected ? "Clear selection" : "Select all (matching filter)"}
+                  />
+                </th>
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Cardholder</th>
                 <th className="px-4 py-3 font-medium">Description</th>
@@ -117,7 +168,7 @@ export function ReviewView() {
             <tbody>
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={10} className="px-4 py-10 text-center text-muted-foreground">
                     {tab === "todo"
                       ? "Nothing waiting for review."
                       : "Nothing marked complete yet."}
@@ -126,30 +177,38 @@ export function ReviewView() {
               )}
               {pageRows.map((r) => (
                 <tr key={r.id} className="border-b last:border-b-0 hover:bg-muted/40">
-                  <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                  <td className="px-4 py-1.5">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-[#1e4f39]"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleRow(r.id)}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-1.5 text-muted-foreground">
                     {r.effectiveDate}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 font-medium">{r.cardholder}</td>
-                  <td className="max-w-64 truncate px-4 py-2.5" title={r.description}>
+                  <td className="whitespace-nowrap px-4 py-1.5 font-medium">{r.cardholder}</td>
+                  <td className="max-w-64 truncate px-4 py-1.5" title={r.description}>
                     {r.description}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">
                     {formatPaise(r.amountPaise)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5">
+                  <td className="whitespace-nowrap px-4 py-1.5">
                     {r.category ? (
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{r.category}</span>
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td className="max-w-44 truncate px-4 py-2.5" title={r.tags}>
+                  <td className="max-w-44 truncate px-4 py-1.5" title={r.tags}>
                     {r.tags || "—"}
                   </td>
-                  <td className="max-w-56 truncate px-4 py-2.5 text-muted-foreground" title={r.remarks}>
+                  <td className="max-w-56 truncate px-4 py-1.5 text-muted-foreground" title={r.remarks}>
                     {r.remarks || "—"}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5">
+                  <td className="whitespace-nowrap px-4 py-1.5">
                     {r.invoiceUrl ? (
                       <button
                         type="button"
@@ -163,7 +222,7 @@ export function ReviewView() {
                       <span className="text-xs text-muted-foreground">No invoice needed</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5">
+                  <td className="whitespace-nowrap px-4 py-1.5">
                     {tab === "todo" ? (
                       <Button
                         size="sm"

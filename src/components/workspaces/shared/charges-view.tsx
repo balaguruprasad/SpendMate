@@ -464,72 +464,56 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
               )}
               {pageRows.map((r) => (
                 <tr key={r.id} className="border-b last:border-b-0 hover:bg-muted/40">
-                  <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                  <td className="whitespace-nowrap px-4 py-1.5 text-muted-foreground">
                     {r.effectiveDate}
                   </td>
-                  <td className="max-w-72 px-4 py-2.5">
+                  <td className="max-w-72 px-4 py-1.5">
                     <span className="block truncate font-medium" title={r.description}>
                       {r.description}
                     </span>
                   </td>
                   {isAdmin && !viewAsId && (
-                    <td className="whitespace-nowrap px-4 py-2.5">{r.cardholder}</td>
+                    <td className="whitespace-nowrap px-4 py-1.5">{r.cardholder}</td>
                   )}
-                  <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">
+                  <td className="whitespace-nowrap px-4 py-1.5 text-right tabular-nums">
                     {formatPaise(r.amountPaise)}
                   </td>
-                  <td className="px-4 py-2.5">
-                    {isAdmin ? (
-                      <Select
-                        value={r.category || "__none"}
-                        onValueChange={(v) => setCategory(r, v === "__none" ? "" : v)}
-                      >
-                        <SelectTrigger size="sm" className="w-40">
-                          <SelectValue placeholder="—" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">—</SelectItem>
-                          {categories.map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      // Cardholders: read-only, except the Penny-testing toggle
-                      // on nominal/Others charges.
-                      <span className="flex items-center gap-1.5">
-                        {r.category ? (
-                          <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{r.category}</span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                        {!r.reviewed && r.category === "Penny testing" && (
-                          <button
-                            type="button"
-                            className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
-                            title="Not a penny test — put it back under Others"
-                            onClick={() => setCategory(r, "Others")}
-                          >
-                            Undo
-                          </button>
-                        )}
-                        {!r.reviewed && (r.category === "" || r.category === "Others") && (
-                          <button
-                            type="button"
-                            className="rounded-full border border-[#1e4f39]/40 px-2 py-0.5 text-xs text-[#1e4f39] hover:bg-[#e7f2ec]"
-                            title="Mark this charge as a bank penny test (nominal debit/credit)"
-                            onClick={() => setCategory(r, "Penny testing")}
-                          >
-                            Penny?
-                          </button>
-                        )}
-                      </span>
-                    )}
+                  <td className="px-4 py-1.5">
+                    {/* Categories are auto-assigned (GST / markup) or default
+                        to Others — nobody hand-picks GST/Markup. The only
+                        manual move is the Penny-testing toggle. */}
+                    <span className="flex items-center gap-1.5">
+                      {r.category ? (
+                        <span className="whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs">
+                          {r.category}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                      {!r.reviewed && r.category === "Penny testing" && (
+                        <button
+                          type="button"
+                          className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                          title="Not a penny test — put it back under Others"
+                          onClick={() => setCategory(r, "Others")}
+                        >
+                          Undo
+                        </button>
+                      )}
+                      {!r.reviewed && (r.category === "" || r.category === "Others") && (
+                        <button
+                          type="button"
+                          className="rounded-full border border-[#1e4f39]/40 px-2 py-0.5 text-xs text-[#1e4f39] hover:bg-[#e7f2ec]"
+                          title="Mark this charge as a bank penny test (nominal debit/credit)"
+                          onClick={() => setCategory(r, "Penny testing")}
+                        >
+                          Penny?
+                        </button>
+                      )}
+                    </span>
                   </td>
                   {tagOptions.length > 0 && (
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-1.5">
                       {r.reviewed && !isAdmin ? (
                         <span className="block w-40 truncate text-sm" title={r.tags}>
                           {r.tags || "—"}
@@ -572,7 +556,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                       )}
                     </td>
                   )}
-                  <td className="max-w-64 px-4 py-2.5">
+                  <td className="max-w-64 px-4 py-1.5">
                     {r.reviewed && !isAdmin ? (
                       <span className="block truncate text-xs text-muted-foreground" title={r.remarks}>
                         {r.remarks || "—"}
@@ -598,7 +582,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                       </button>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5">
+                  <td className="whitespace-nowrap px-4 py-1.5">
                     <div className="flex items-center gap-1.5">
                       {r.invoiceUrl ? (
                         <>
@@ -637,7 +621,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                       )}
                     </div>
                   </td>
-                  <td className="px-2 py-2.5">
+                  <td className="px-2 py-1.5">
                     {r.reviewed && (
                       <span
                         className="inline-flex size-5 items-center justify-center rounded-full bg-[#1e4f39] text-white"

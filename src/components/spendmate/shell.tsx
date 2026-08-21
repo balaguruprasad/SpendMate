@@ -11,9 +11,9 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import {
-  BarChart3, BellRing, ClipboardCheck, CreditCard, Download, Eye, KeyRound,
-  Landmark, LogOut, PanelLeftClose, PanelLeftOpen, ReceiptText, Settings2,
-  Trophy, Users, UsersRound,
+  BarChart3, BellRing, ClipboardCheck, CreditCard, Download, Eye, FileSpreadsheet,
+  KeyRound, Landmark, LogOut, PanelLeftClose, PanelLeftOpen, ReceiptText,
+  Settings2, Trophy, Users, UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -95,6 +95,7 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
   ];
   const adminTools: { href: string; icon: LucideIcon; label: string }[] = [
     { href: `${base}/import`, icon: Download, label: "Import statement" },
+    { href: `${base}/reports`, icon: FileSpreadsheet, label: "Reports" },
     { href: `${base}/cards`, icon: CreditCard, label: "Cards" },
     { href: `${base}/settings`, icon: Settings2, label: "Settings" },
     { href: `${base}/users`, icon: Users, label: "Users" },
