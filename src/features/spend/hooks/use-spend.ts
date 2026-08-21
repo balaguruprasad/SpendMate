@@ -184,3 +184,21 @@ export function useSendReminders() {
     onError: (error) => toast.error(errorMessage(error, "Could not send reminders.")),
   });
 }
+
+/** The G-Sheet-style avatar bar: ping every 25s; drop off after ~75s. */
+export function usePresence() {
+  return useQuery({
+    queryKey: queryKeys.spend.presence(),
+    queryFn: service.presencePing,
+    refetchInterval: 25_000,
+    refetchIntervalInBackground: false,
+  });
+}
+
+export function useLoginActivity() {
+  return useQuery({
+    queryKey: queryKeys.spend.logins(),
+    queryFn: service.loginActivity,
+    refetchInterval: 30_000,
+  });
+}

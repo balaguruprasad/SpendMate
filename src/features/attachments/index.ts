@@ -22,4 +22,4 @@ export {
 } from "./types";
 
 /** Resolve a row's downloadUrl to a browser-openable href (pure helper, no hooks). */
-export { downloadHref } from "./services/attachments.service";
+export { downloadHref, upload } from "./services/attachments.service";

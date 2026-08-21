@@ -98,3 +98,27 @@ export async function reminderInfo(): Promise<{ lastRun: { at: string; sent: num
   return (await api.get<Enveloped<{ lastRun: { at: string; sent: number } | null }>>("/spend/reminders"))
     .data;
 }
+
+export interface PresenceUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function presencePing(): Promise<{ users: PresenceUser[] }> {
+  return (await api.post<Enveloped<{ users: PresenceUser[] }>>("/spend/presence", {})).data;
+}
+
+export interface LoginActivityRow {
+  id: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "MEMBER";
+  isActive: boolean;
+  lastLogin: string | null;
+  online: boolean;
+}
+
+export async function loginActivity(): Promise<LoginActivityRow[]> {
+  return (await api.get<Enveloped<LoginActivityRow[]>>("/spend/logins")).data;
+}

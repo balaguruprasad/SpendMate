@@ -12,6 +12,8 @@ export const queryKeys = {
     cards: () => ["spend", "cards"] as const,
     settings: () => ["spend", "settings"] as const,
     reminders: () => ["spend", "reminders"] as const,
+    presence: () => ["spend", "presence"] as const,
+    logins: () => ["spend", "logins"] as const,
   },
   auth: {
     me: ["auth", "me"] as const,

@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * Charges — the single working screen of SpendMate, shared by cardholders
- * (their own + helped charges) and the admin (everyone's, plus the summary
- * strip and reminders). Each charge is completed by uploading its invoice OR
- * picking a category (no-invoice charges like bank fees), and — when the
- * configurable Tag dropdown (e.g. Department) has options — selecting a tag.
+ * Transactions — the working screen, styled after the original Apps Script
+ * app: stat tiles, All / Pending / Done pills, search, Download report, and a
+ * table with INLINE category + department dropdowns and invoice
+ * Upload / View / Replace right in the row.
+ *
+ * Admins additionally get "View as cardholder" (?as=<holderId>): the list
+ * narrows to that person and edits save to their charges, exactly like the
+ * old app's banner said.
  */
-import { useMemo, useState } from "react";
-import { BellRing, Paperclip, Pencil, UserPlus, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Download, Eye, Pencil, Upload, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,29 +33,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { PageHeader } from "@/components/layout/page-header";
-import { EmptyState } from "@/components/shared/empty-state";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { TableSkeleton } from "@/components/shared/loading";
-import { StatusBadge } from "@/components/shared/status-badge";
 import { TablePagination } from "@/components/shared/table-pagination";
-import { FileUpload } from "@/components/shared/file-upload";
 import { usePagedRows } from "@/hooks/use-paged-rows";
-import type { UploadedFile } from "@/features/attachments";
+import { upload } from "@/features/attachments";
+import { downloadFile, toCsv } from "@/lib/csv";
+import { toast } from "@/lib/toast";
 import {
   formatPaise,
-  TXN_STATUS_LABEL,
   useAddHelper,
   useAttachInvoice,
   useRemoveHelper,
-  useReminderInfo,
-  useSendReminders,
   useSpendMe,
   useSpendTransactions,
   useUpdateTransaction,
@@ -61,393 +56,430 @@ import {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
+function invoiceHref(url: string): string {
+  return url.startsWith("/api") ? API_BASE.replace(/\/api\/v1$/, "") + url : url;
+}
+
+/** One stat tile, Apps-Script style: label on top, big number under. */
+function Tile({
+  label,
+  value,
+  tone = "green",
+}: {
+  label: string;
+  value: string;
+  tone?: "amber" | "green";
+}) {
+  return (
+    <div
+      className={`flex-1 rounded-xl px-4 py-3 ${
+        tone === "amber" ? "bg-[#fdf3df]" : "bg-[#e7f2ec]"
+      }`}
+    >
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-2xl font-bold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
 export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
   const { data: me } = useSpendMe();
   const { data, isLoading } = useSpendTransactions();
   const update = useUpdateTransaction();
   const attach = useAttachInvoice();
-  const sendReminders = useSendReminders();
-  const { data: reminders } = useReminderInfo();
   const addHelper = useAddHelper();
   const removeHelper = useRemoveHelper();
+  const searchParams = useSearchParams();
+  const viewAsId = isAdmin ? searchParams.get("as") : null;
 
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "done">("pending");
-  const [personFilter, setPersonFilter] = useState<string>("all");
+  const [pill, setPill] = useState<"all" | "pending" | "done">("all");
   const [query, setQuery] = useState("");
-  const [editing, setEditing] = useState<SpendTransaction | null>(null);
-  const [editCategory, setEditCategory] = useState("");
-  const [editTags, setEditTags] = useState<string[]>([]);
-  const [editRemarks, setEditRemarks] = useState("");
-  const [uploadFiles, setUploadFiles] = useState<UploadedFile[]>([]);
+  const [remarksFor, setRemarksFor] = useState<SpendTransaction | null>(null);
+  const [remarksText, setRemarksText] = useState("");
   const [helpersOpen, setHelpersOpen] = useState(false);
   const [helperEmail, setHelperEmail] = useState("");
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pendingUploadTxn = useRef<string | null>(null);
 
   const settings = me?.settings;
-  const tagLabel = settings?.tagLabel ?? "Tag";
+  const tagLabel = settings?.tagLabel ?? "Department";
   const tagOptions = settings?.tagOptions ?? [];
   const categories = settings?.categories ?? [];
 
-  const people = useMemo(
-    () => Object.keys(data?.summary ?? {}).sort((a, b) => a.localeCompare(b)),
-    [data?.summary],
-  );
+  const viewAsName = useMemo(() => {
+    if (!viewAsId) return null;
+    return (data?.rows ?? []).find((r) => r.cardholderId === viewAsId)?.cardholder ?? null;
+  }, [viewAsId, data?.rows]);
+
+  const scoped = useMemo(() => {
+    const rows = data?.rows ?? [];
+    return viewAsId ? rows.filter((r) => r.cardholderId === viewAsId) : rows;
+  }, [data?.rows, viewAsId]);
+
+  const stats = useMemo(() => {
+    const pending = scoped.filter((r) => r.pending).length;
+    const submitted = scoped.filter((r) => r.status === "SUBMITTED").length;
+    const noInvoice = scoped.filter((r) => r.status === "NO_INVOICE_NEEDED").length;
+    const total = scoped.reduce((s, r) => s + r.amountPaise, 0);
+    return { pending, submitted, noInvoice, count: scoped.length, total };
+  }, [scoped]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (data?.rows ?? []).filter((r) => {
-      if (statusFilter === "pending" && !r.pending) return false;
-      if (statusFilter === "done" && r.pending) return false;
-      if (personFilter !== "all" && r.cardholder !== personFilter) return false;
+    return scoped.filter((r) => {
+      if (pill === "pending" && !r.pending) return false;
+      if (pill === "done" && r.pending) return false;
       if (!q) return true;
       return (
         r.description.toLowerCase().includes(q) ||
+        r.remarks.toLowerCase().includes(q) ||
+        r.category.toLowerCase().includes(q) ||
         r.cardholder.toLowerCase().includes(q) ||
-        r.category.toLowerCase().includes(q)
+        r.tags.toLowerCase().includes(q)
       );
     });
-  }, [data?.rows, statusFilter, personFilter, query]);
+  }, [scoped, pill, query]);
 
-  const { page, setPage, pageCount, pageRows } = usePagedRows(filtered, 15);
+  const { page, setPage, pageCount, pageRows } = usePagedRows(filtered, 20);
 
-  function openEdit(r: SpendTransaction) {
-    setEditing(r);
-    setEditCategory(r.category);
-    setEditTags(r.tags ? r.tags.split(",").map((s) => s.trim()).filter(Boolean) : []);
-    setEditRemarks(r.remarks);
-    setUploadFiles([]);
+  function pickFile(txnId: string) {
+    pendingUploadTxn.current = txnId;
+    fileRef.current?.click();
   }
 
-  async function saveEdit() {
-    if (!editing) return;
-    if (uploadFiles.length > 0) {
-      await attach.mutateAsync({ id: editing.id, file: uploadFiles[0]! });
+  async function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const txnId = pendingUploadTxn.current;
+    e.target.value = "";
+    if (!file || !txnId) return;
+    setUploadingId(txnId);
+    try {
+      const uploaded = await upload(file, "TRANSACTION");
+      await attach.mutateAsync({ id: txnId, file: uploaded });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingId(null);
+      pendingUploadTxn.current = null;
     }
-    await update.mutateAsync({
-      id: editing.id,
-      patch: {
-        category: editCategory,
-        tags: editTags.join(", "),
-        remarks: editRemarks.trim(),
-      },
-    });
-    setEditing(null);
   }
 
-  const pendingTotal = (data?.rows ?? []).filter((r) => r.pending).length;
+  function setCategory(r: SpendTransaction, category: string) {
+    update.mutate({ id: r.id, patch: { category } });
+  }
+
+  function toggleTag(r: SpendTransaction, tag: string) {
+    const current = r.tags ? r.tags.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const next = current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag];
+    update.mutate({ id: r.id, patch: { tags: next.join(", ") } });
+  }
+
+  function downloadReport() {
+    const header = [
+      "date", "description", "cardholder", "card", "amount", "category",
+      tagLabel.toLowerCase(), "status", "remarks", "invoice",
+    ];
+    const body = filtered.map((r) => [
+      r.effectiveDate, r.description, r.cardholder, r.card,
+      (r.amountPaise / 100).toFixed(2), r.category, r.tags,
+      r.pending ? "Pending" : r.status === "SUBMITTED" ? "Submitted" : "No invoice needed",
+      r.remarks, r.invoiceName,
+    ]);
+    downloadFile(
+      `spendmate-report-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv([header, ...body]),
+    );
+  }
+
+  const statusChip = (r: SpendTransaction) => {
+    if (r.pending)
+      return <span className="rounded-full bg-[#fdf3df] px-2.5 py-1 text-xs font-medium text-[#8a6116]">Pending</span>;
+    if (r.status === "SUBMITTED")
+      return <span className="rounded-full bg-[#e7f2ec] px-2.5 py-1 text-xs font-medium text-[#1e4f39]">Submitted</span>;
+    return <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">No invoice needed</span>;
+  };
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow="SpendMate"
-        title="Charges"
-        description={
-          isAdmin
-            ? "Every company-card charge. Import statements, chase pending invoices, and keep the books clean."
-            : "Your company-card charges. Upload each invoice (or pick a category when none exists) and set the " +
-              tagLabel.toLowerCase() +
-              "."
-        }
-        actions={
-          <>
-            {!isAdmin && (me?.myCards.length ?? 0) > 0 && (
-              <Button variant="outline" onClick={() => setHelpersOpen(true)}>
-                <UserPlus className="size-4" /> My helpers
-              </Button>
-            )}
-            {isAdmin && (
-              <Button
-                loading={sendReminders.isPending}
-                onClick={() => sendReminders.mutate([])}
-                title={
-                  reminders?.lastRun
-                    ? `Last sent ${reminders.lastRun.at.slice(0, 16).replace("T", " ")} to ${reminders.lastRun.sent}`
-                    : "Notify everyone with pending charges"
-                }
-              >
-                <BellRing className="size-4" /> Send reminders
-              </Button>
-            )}
-          </>
-        }
-      />
+    <div className="flex flex-col gap-4">
+      <input ref={fileRef} type="file" hidden accept=".pdf,.png,.jpg,.jpeg" onChange={onFileChosen} />
 
-      {isAdmin && people.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 @2xl/main:grid-cols-4">
-          {people.map((name) => {
-            const s = data!.summary[name]!;
-            return (
-              <Card key={name} className="flex flex-col gap-0.5 px-4 py-3">
-                <p className="truncate text-sm font-medium">{name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {s.count} charge{s.count === 1 ? "" : "s"} · {formatPaise(s.total)}
-                </p>
-                {s.pending > 0 ? (
-                  <p className="text-xs font-medium text-destructive">{s.pending} pending</p>
-                ) : (
-                  <p className="text-xs text-success">All complete</p>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+      {viewAsName && (
+        <p className="text-sm text-muted-foreground">
+          Seeing what <span className="font-semibold text-foreground">{viewAsName}</span> sees —
+          uploads and remarks you make here are saved to their charges.
+        </p>
+      )}
+      {!isAdmin && (me?.helperFor.length ?? 0) > 0 && (
+        <p className="text-sm text-muted-foreground">
+          You also see charges for{" "}
+          <span className="font-medium text-foreground">
+            {me!.helperFor.map((h) => h.name).join(", ")}
+          </span>{" "}
+          — they added you as their invoice helper.
+        </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Search description, person, category…"
-          className="w-full @2xl/main:w-72"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setPage(1);
-          }}
-        />
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => {
-            setStatusFilter(v as typeof statusFilter);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger size="sm" className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pending">Pending ({pendingTotal})</SelectItem>
-            <SelectItem value="done">Completed</SelectItem>
-            <SelectItem value="all">All charges</SelectItem>
-          </SelectContent>
-        </Select>
-        {people.length > 1 && (
-          <Select
-            value={personFilter}
-            onValueChange={(v) => {
-              setPersonFilter(v);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger size="sm" className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Everyone</SelectItem>
-              {people.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+      {/* Stat tiles */}
+      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm @2xl/main:flex-row">
+        <Tile label="Pending — needs action" value={String(stats.pending)} tone="amber" />
+        <Tile label="Invoice submitted" value={String(stats.submitted)} />
+        <Tile label="No invoice needed" value={String(stats.noInvoice)} />
+        <Tile label="Total charges" value={String(stats.count)} />
+        <Tile label="Total spend" value={formatPaise(stats.total)} />
       </div>
 
-      {isLoading ? (
-        <TableSkeleton rows={8} />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={Paperclip}
-          title={statusFilter === "pending" ? "Nothing pending" : "No charges"}
-          description={
-            statusFilter === "pending"
-              ? "Every charge here is complete — invoices in, categories and tags set."
-              : "Charges appear when the admin imports the card statement."
-          }
-        />
-      ) : (
-        <>
-          <Card className="overflow-x-auto p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Date</TableHead>
-                  <TableHead>Description</TableHead>
-                  {isAdmin && <TableHead>Cardholder</TableHead>}
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Category</TableHead>
-                  {tagOptions.length > 0 && <TableHead>{tagLabel}</TableHead>}
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-24 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pageRows.map((r) => (
-                  <TableRow key={r.id} className={r.pending ? "" : "opacity-80"}>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {r.effectiveDate}
-                    </TableCell>
-                    <TableCell>
-                      <span className="block max-w-64 truncate font-medium" title={r.description}>
-                        {r.description}
-                      </span>
-                      <span className="block text-xs text-muted-foreground">
-                        {r.card}
-                        {r.remarks && <span title={r.remarks}> · “{r.remarks.slice(0, 40)}”</span>}
-                      </span>
-                    </TableCell>
-                    {isAdmin && <TableCell>{r.cardholder}</TableCell>}
-                    <TableCell className="whitespace-nowrap text-right tabular-nums">
-                      {formatPaise(r.amountPaise)}
-                    </TableCell>
-                    <TableCell>
-                      {r.category || <span className="text-xs text-muted-foreground">—</span>}
-                    </TableCell>
-                    {tagOptions.length > 0 && (
-                      <TableCell>
-                        {r.tags ? (
-                          <span className="text-sm">{r.tags}</span>
-                        ) : (
-                          <span className="text-xs text-destructive">missing</span>
-                        )}
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <StatusBadge
-                        label={r.pending ? "Pending" : TXN_STATUS_LABEL[r.status]}
-                        tone={r.pending ? "warning" : "success"}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {r.invoiceUrl && (
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label="View invoice"
-                            title={r.invoiceName}
-                            onClick={() =>
-                              window.open(
-                                r.invoiceUrl.startsWith("/api")
-                                  ? API_BASE.replace(/\/api\/v1$/, "") + r.invoiceUrl
-                                  : r.invoiceUrl,
-                                "_blank",
-                              )
-                            }
-                          >
-                            <Paperclip className="size-3.5" />
-                          </Button>
-                        )}
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          aria-label="Complete this charge"
-                          onClick={() => openEdit(r)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-          <TablePagination page={page} pageCount={pageCount} onPageChange={setPage} />
-        </>
-      )}
+      {/* Pills + search + report */}
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-card p-4 shadow-sm">
+        {(
+          [
+            ["all", `All (${stats.count})`],
+            ["pending", `Pending (${stats.pending})`],
+            ["done", `Done (${stats.count - stats.pending})`],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              setPill(key);
+              setPage(1);
+            }}
+            className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
+              pill === key
+                ? "border-[#1e4f39] bg-[#1e4f39] font-medium text-white"
+                : "hover:bg-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          <Input
+            placeholder="Search description, remarks, category…"
+            className="w-64"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+          />
+          <Button className="bg-[#1e4f39] text-white hover:bg-[#173d2c]" onClick={downloadReport}>
+            <Download className="size-4" /> Download report
+          </Button>
+          {!isAdmin && (me?.myCards.length ?? 0) > 0 && (
+            <Button variant="outline" onClick={() => setHelpersOpen(true)}>
+              <UserPlus className="size-4" /> My helpers
+            </Button>
+          )}
+        </div>
+      </div>
 
-      {/* Complete-a-charge dialog: invoice + category + tag + remarks in one place. */}
-      <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="sm:max-w-lg">
+      {/* Table */}
+      <div className="overflow-x-auto rounded-2xl border bg-card shadow-sm">
+        {isLoading ? (
+          <div className="p-4">
+            <TableSkeleton rows={10} />
+          </div>
+        ) : (
+          <table className="w-full min-w-[64rem] text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="px-4 py-3 font-medium">Date</th>
+                <th className="px-4 py-3 font-medium">Description</th>
+                {isAdmin && !viewAsId && <th className="px-4 py-3 font-medium">Cardholder</th>}
+                <th className="px-4 py-3 text-right font-medium">Amount</th>
+                <th className="px-4 py-3 font-medium">Category</th>
+                {tagOptions.length > 0 && <th className="px-4 py-3 font-medium">{tagLabel}</th>}
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Invoice</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                    {pill === "pending" ? "Nothing pending here — all done." : "No charges match."}
+                  </td>
+                </tr>
+              )}
+              {pageRows.map((r) => (
+                <tr key={r.id} className="border-b last:border-b-0 hover:bg-muted/40">
+                  <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                    {r.effectiveDate}
+                  </td>
+                  <td className="max-w-72 px-4 py-2.5">
+                    <span className="block truncate font-medium" title={r.description}>
+                      {r.description}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRemarksFor(r);
+                        setRemarksText(r.remarks);
+                      }}
+                      className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      title="Edit remarks"
+                    >
+                      <Pencil className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                      {r.remarks ? (
+                        <span className="max-w-60 truncate">“{r.remarks}”</span>
+                      ) : (
+                        <span className="italic opacity-0 transition-opacity group-hover:opacity-100">
+                          add remarks
+                        </span>
+                      )}
+                    </button>
+                  </td>
+                  {isAdmin && !viewAsId && (
+                    <td className="whitespace-nowrap px-4 py-2.5">{r.cardholder}</td>
+                  )}
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums">
+                    {formatPaise(r.amountPaise)}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <Select
+                      value={r.category || "__none"}
+                      onValueChange={(v) => setCategory(r, v === "__none" ? "" : v)}
+                    >
+                      <SelectTrigger size="sm" className="w-40">
+                        <SelectValue placeholder="—" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">—</SelectItem>
+                        {categories.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  {tagOptions.length > 0 && (
+                    <td className="px-4 py-2.5">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className={`w-40 truncate rounded-md border px-2.5 py-1.5 text-left text-sm hover:bg-muted ${
+                              r.tags ? "" : "text-destructive"
+                            }`}
+                            title={r.tags || `Pick the ${tagLabel.toLowerCase()}`}
+                          >
+                            {r.tags || "— pick —"}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-2" align="start">
+                          <div className="flex flex-wrap gap-1.5">
+                            {tagOptions.map((t) => {
+                              const on = r.tags.split(",").map((s) => s.trim()).includes(t);
+                              return (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => toggleTag(r, t)}
+                                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                                    on
+                                      ? "border-[#1e4f39] bg-[#1e4f39] text-white"
+                                      : "hover:bg-muted"
+                                  }`}
+                                >
+                                  {t}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </td>
+                  )}
+                  <td className="whitespace-nowrap px-4 py-2.5">{statusChip(r)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      {r.invoiceUrl ? (
+                        <>
+                          <a
+                            href={invoiceHref(r.invoiceUrl)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-sm text-[#1e4f39] underline-offset-2 hover:underline"
+                            title={r.invoiceName}
+                          >
+                            <Eye className="size-3.5" /> View
+                          </a>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs"
+                            loading={uploadingId === r.id}
+                            onClick={() => pickFile(r.id)}
+                          >
+                            Replace
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          loading={uploadingId === r.id}
+                          onClick={() => pickFile(r.id)}
+                        >
+                          <Upload className="size-3.5" /> Upload
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <TablePagination page={page} pageCount={pageCount} onPageChange={setPage} />
+
+      {/* Remarks dialog */}
+      <Dialog open={remarksFor !== null} onOpenChange={(o) => !o && setRemarksFor(null)}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Complete charge</DialogTitle>
+            <DialogTitle>Remarks</DialogTitle>
             <DialogDescription>
-              {editing
-                ? `${editing.description} — ${formatPaise(editing.amountPaise)} on ${editing.effectiveDate}`
+              {remarksFor
+                ? `${remarksFor.description} — ${formatPaise(remarksFor.amountPaise)} on ${remarksFor.effectiveDate}`
                 : ""}
             </DialogDescription>
           </DialogHeader>
-
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label>Invoice {editing?.invoiceName ? `(current: ${editing.invoiceName})` : ""}</Label>
-              <FileUpload
-                entityType="TRANSACTION"
-                value={uploadFiles}
-                onChange={(files) => setUploadFiles(files.slice(-1))}
-                compact
-              />
-              <p className="text-xs text-muted-foreground">
-                No invoice for this charge (bank fee, GST line)? Just pick a category below.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label>Category</Label>
-              <Select value={editCategory || "__none"} onValueChange={(v) => setEditCategory(v === "__none" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">— none —</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {tagOptions.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <Label>
-                  {tagLabel} <span className="text-destructive">*</span>
-                </Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {tagOptions.map((t) => {
-                    const on = editTags.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() =>
-                          setEditTags((prev) => (on ? prev.filter((x) => x !== t) : [...prev, t]))
-                        }
-                        className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                          on
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "hover:bg-muted"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  A charge is not complete until the {tagLabel.toLowerCase()} is set.
-                </p>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="charge-remarks">Remarks</Label>
-              <Textarea
-                id="charge-remarks"
-                rows={2}
-                value={editRemarks}
-                placeholder="Anything the admin should know about this charge"
-                onChange={(e) => setEditRemarks(e.target.value)}
-              />
-            </div>
-          </div>
-
+          <Textarea
+            rows={3}
+            value={remarksText}
+            placeholder="What was this charge for?"
+            onChange={(e) => setRemarksText(e.target.value)}
+          />
           <DialogFooter>
-            <Button loading={update.isPending || attach.isPending} onClick={() => void saveEdit()}>
-              Save
+            <Button
+              loading={update.isPending}
+              onClick={() => {
+                if (!remarksFor) return;
+                update.mutate(
+                  { id: remarksFor.id, patch: { remarks: remarksText.trim() } },
+                  { onSuccess: () => setRemarksFor(null) },
+                );
+              }}
+            >
+              Save remarks
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* My-helpers dialog: nominate colleagues who can complete your charges. */}
+      {/* My-helpers dialog (cardholders) */}
       <Dialog open={helpersOpen} onOpenChange={setHelpersOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>My invoice helpers</DialogTitle>
             <DialogDescription>
               Helpers see your charges and can upload invoices or fill in details for you.
-              Reminder emails still come only to you.
+              Reminders still come only to you.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
@@ -497,6 +529,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
