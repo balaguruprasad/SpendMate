@@ -135,12 +135,21 @@ function autoRule(description: string, amountPaise: number): { cat: string; tag:
   return null
 }
 
+// ── Settlements ─────────────────────────────────────────────────────────────
+
+/** Card settlement credits ("PAYMENT RECEIVED-AUTODEBIT") — not spends. They
+ * never need an invoice and are excluded from spend totals/pending counts. */
+export function isSettlement(description: string): boolean {
+  return /payment\s*received/i.test(description)
+}
+
 // ── Pending rule ────────────────────────────────────────────────────────────
 
 export function isRowPending(
-  row: { status: TxnStatus; tags: string },
+  row: { status: TxnStatus; tags: string; description: string },
   tagRequired: boolean,
 ): boolean {
+  if (isSettlement(row.description)) return false
   if (row.status === 'PENDING') return true
   if (tagRequired && !row.tags.trim()) return true
   return false
@@ -189,6 +198,7 @@ export interface TransactionPublic {
   tags: string
   pending: boolean
   reviewed: boolean
+  settlement: boolean
   updatedAt: string
 }
 
@@ -212,6 +222,7 @@ function toPublic(r: repo.TransactionListRow, tagRequired: boolean): Transaction
     tags: r.tags,
     pending: isRowPending(r, tagRequired),
     reviewed: r.reviewedAt !== null,
+    settlement: isSettlement(r.description),
     updatedAt: r.updatedAt.toISOString(),
   }
 }
@@ -234,6 +245,7 @@ export async function listTransactions(user: Claims) {
 function buildSummary(rows: TransactionPublic[]) {
   const byPerson: Record<string, { total: number; count: number; pending: number }> = {}
   for (const r of rows) {
+    if (r.settlement) continue
     const key = r.cardholder
     byPerson[key] = byPerson[key] ?? { total: 0, count: 0, pending: 0 }
     byPerson[key].total += r.amountPaise
