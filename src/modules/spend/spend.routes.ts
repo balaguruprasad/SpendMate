@@ -18,6 +18,10 @@ r.post('/transactions/:id/invoice', anyUser, controller.attachInvoice)
 r.post('/transactions/import', admin, controller.importTransactions)
 // Accounts sign-off: reviewed + accounting done (admin/accounts only).
 r.post('/transactions/:id/review', admin, controller.setReviewed)
+r.post('/transactions/review-bulk', admin, controller.setReviewedBulk)
+
+// Reports: CSV / CSV+invoices ZIP bulk download (admin/accounts only).
+r.get('/export', admin, controller.exportReport)
 
 // Cards — admin manages who owns which card.
 r.get('/cards', admin, controller.listCards)

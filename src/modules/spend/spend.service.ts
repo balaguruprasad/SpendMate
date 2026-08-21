@@ -295,13 +295,17 @@ export async function updateTransaction(
         throw new UnprocessableError('UNKNOWN_CATEGORY', `Unknown category: ${input.category}`)
       }
       patch.category = input.category
-      // Invoice present → stays SUBMITTED; else category chosen → no invoice
-      // needed; category cleared → back to Pending.
+      // Invoice present → stays SUBMITTED. Only the bank line-item categories
+      // (GST / markup / penny) mean "no invoice needed" — a normal spend under
+      // Others still needs its invoice.
+      const NO_INVOICE_CATS = ['GST', 'Markup Charges', 'Penny testing']
       patch.status = txn.invoiceKey
         ? 'SUBMITTED'
-        : input.category
+        : input.category && NO_INVOICE_CATS.includes(input.category)
           ? 'NO_INVOICE_NEEDED'
-          : 'PENDING'
+          : txn.status === 'NO_INVOICE_NEEDED' && input.category
+            ? 'NO_INVOICE_NEEDED' // keep migrated no-invoice rows done on recategorise
+            : 'PENDING'
     }
 
     if (input.tags !== undefined) {
@@ -388,7 +392,9 @@ export async function importTransactions(input: ImportTransactionsInput, user: C
           postingDate: row.postingDate ? new Date(row.postingDate) : null,
           amountPaise: row.amountPaise,
           description: row.description,
-          category: rule?.cat ?? '',
+          // Every normal spend defaults to Others; cardholders may re-mark it
+          // as Penny testing, admins can override the rest.
+          category: rule?.cat ?? 'Others',
           status: rule ? 'NO_INVOICE_NEEDED' : 'PENDING',
           tags: rule?.tag ?? '',
           updatedAt: new Date(),
@@ -647,6 +653,60 @@ export async function setReviewed(txnId: string, on: boolean, user: Claims) {
     })
     return repo.findTransaction(txnId, trx)
   })
+}
+
+/** Bulk accounts sign-off: mark many charges reviewed in one go. Pending
+ * rows are skipped (not an error) so "select all" stays forgiving. */
+export async function setReviewedBulk(txnIds: string[], on: boolean, user: Claims) {
+  return db.transaction().execute(async (trx) => {
+    let q = trx
+      .updateTable('transactions')
+      .set(on ? { reviewedAt: new Date(), reviewedBy: user.sub } : { reviewedAt: null, reviewedBy: null })
+      .where('id', 'in', txnIds)
+    if (on) q = q.where('status', '!=', 'PENDING')
+    const result = await q.executeTakeFirst()
+    const updated = Number(result.numUpdatedRows)
+    const skipped = txnIds.length - updated
+    await writeAudit(trx, {
+      entityType: 'SPEND_TXN',
+      entityId: user.sub,
+      action: on ? 'REVIEWED_BULK' : 'REVIEW_CLEARED_BULK',
+      actorId: user.sub,
+      metadata: { updated, skipped },
+    })
+    return { updated, skipped }
+  })
+}
+
+// ── Bulk export (Reports) ───────────────────────────────────────────────────
+
+export interface ExportRow extends TransactionPublic {
+  invoiceKey: string
+  reviewedByName: string
+}
+
+/** Every field of every charge in [from, to] (yyyy-mm month bounds, inclusive),
+ * for the admin Reports download. */
+export async function exportRows(from?: string, to?: string): Promise<ExportRow[]> {
+  const [rows, settings, users] = await Promise.all([
+    repo.listTransactions(),
+    getSettings(),
+    db.selectFrom('users').select(['id', 'name']).execute(),
+  ])
+  const tagRequired = settings.tagOptions.length > 0
+  const nameOf = new Map(users.map((u) => [u.id, u.name]))
+  return rows
+    .filter((r) => {
+      const m = iso(r.effectiveDate)!.slice(0, 7)
+      if (from && m < from) return false
+      if (to && m > to) return false
+      return true
+    })
+    .map((r) => ({
+      ...toPublic(r, tagRequired),
+      invoiceKey: r.invoiceKey,
+      reviewedByName: r.reviewedBy ? (nameOf.get(r.reviewedBy) ?? '') : '',
+    }))
 }
 
 // ── Weekly auto-reminder (Mondays ~9:00 IST) ────────────────────────────────

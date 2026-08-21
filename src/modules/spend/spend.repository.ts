@@ -49,8 +49,10 @@ export interface TransactionListRow {
   remarks: string
   invoiceName: string
   invoiceUrl: string
+  invoiceKey: string
   tags: string
   reviewedAt: Date | null
+  reviewedBy: string | null
   updatedAt: Date
   holderId: string | null
   holderName: string | null
@@ -74,8 +76,10 @@ export function listTransactions(conn: Conn = db): Promise<TransactionListRow[]>
       'transactions.remarks',
       'transactions.invoiceName',
       'transactions.invoiceUrl',
+      'transactions.invoiceKey',
       'transactions.tags',
       'transactions.reviewedAt',
+      'transactions.reviewedBy',
       'transactions.updatedAt',
     ])
     .select(sql<string | null>`cards."holderId"`.as('holderId'))

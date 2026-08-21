@@ -68,6 +68,20 @@ export const settingsBody = z.object({
 })
 export type SettingsInput = z.infer<typeof settingsBody>
 
+export const reviewBulkBody = z.object({
+  ids: z.array(z.uuid()).min(1).max(2000),
+  on: z.boolean(),
+})
+
+const isoMonth = z.string().regex(/^\d{4}-\d{2}$/, 'Use yyyy-mm')
+
+export const exportQuery = z.object({
+  from: isoMonth.optional(),
+  to: isoMonth.optional(),
+  /** "1" → bundle the invoice files into the ZIP as well. */
+  invoices: z.enum(['0', '1']).default('0'),
+})
+
 export const sendRemindersBody = z.object({
   /** Restrict to these cardholder user ids; empty/omitted = everyone pending. */
   userIds: z.array(z.uuid()).max(200).default([]),
