@@ -131,7 +131,9 @@ const PENNY_MAX_PAISE = 1000
 function autoRule(description: string, amountPaise: number): { cat: string; tag: string } | null {
   const byDesc = AUTO_CAT_RULES[description.trim().toLowerCase()]
   if (byDesc) return byDesc
-  if (Math.abs(amountPaise) <= PENNY_MAX_PAISE) return { cat: 'Penny testing', tag: 'Others' }
+  // Nominal amounts need no invoice but default to Others — cardholders can
+  // re-mark a specific charge as "Penny testing" themselves.
+  if (Math.abs(amountPaise) <= PENNY_MAX_PAISE) return { cat: 'Others', tag: 'Others' }
   return null
 }
 
@@ -274,14 +276,20 @@ export async function updateTransaction(
     const txn = await repo.findTransaction(txnId, trx)
     if (!txn) throw new NotFoundError('Transaction not found')
     await assertRowAccess(txnId, user, trx)
+    if (txn.reviewedAt && user.role !== 'ADMIN') {
+      throw new ForbiddenError('Accounts has marked this charge as done — it can no longer be edited.')
+    }
     const settings = await getSettings(trx)
 
     const patch: Record<string, unknown> = {}
     if (input.remarks !== undefined) patch.remarks = input.remarks
 
     if (input.category !== undefined) {
-      if (user.role !== 'ADMIN') {
-        throw new ForbiddenError('Categories are set automatically — only an admin can override them.')
+      // Cardholders may only toggle a charge between "Penny testing" and
+      // "Others"; everything else is auto-set / admin-only.
+      const memberAllowed = ['Penny testing', 'Others']
+      if (user.role !== 'ADMIN' && !(memberAllowed.includes(input.category) && (memberAllowed.includes(txn.category) || !txn.category))) {
+        throw new ForbiddenError('Categories are set automatically — you can only mark a charge as Penny testing.')
       }
       if (input.category && !settings.categories.includes(input.category)) {
         throw new UnprocessableError('UNKNOWN_CATEGORY', `Unknown category: ${input.category}`)
@@ -325,6 +333,9 @@ export async function attachInvoice(txnId: string, input: AttachInvoiceInput, us
     const txn = await repo.findTransaction(txnId, trx)
     if (!txn) throw new NotFoundError('Transaction not found')
     await assertRowAccess(txnId, user, trx)
+    if (txn.reviewedAt && user.role !== 'ADMIN') {
+      throw new ForbiddenError('Accounts has marked this charge as done — it can no longer be edited.')
+    }
 
     const att = await insertAttachment(
       {
