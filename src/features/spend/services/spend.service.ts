@@ -94,9 +94,21 @@ export async function sendReminders(userIds: string[] = []): Promise<{ sent: str
   return (await api.post<Enveloped<{ sent: string[] }>>("/spend/reminders/send", { userIds })).data;
 }
 
-export async function reminderInfo(): Promise<{ lastRun: { at: string; sent: number } | null }> {
-  return (await api.get<Enveloped<{ lastRun: { at: string; sent: number } | null }>>("/spend/reminders"))
+export async function reminderInfo(): Promise<{ lastRun: { at: string; sent: number } | null; weeklyOn: boolean }> {
+  return (
+    await api.get<Enveloped<{ lastRun: { at: string; sent: number } | null; weeklyOn: boolean }>>(
+      "/spend/reminders",
+    )
+  ).data;
+}
+
+export async function setReviewed(id: string, on: boolean): Promise<SpendTransaction> {
+  return (await api.post<Enveloped<SpendTransaction>>(`/spend/transactions/${id}/review`, { on }))
     .data;
+}
+
+export async function setWeeklyReminders(on: boolean): Promise<{ on: boolean }> {
+  return (await api.put<Enveloped<{ on: boolean }>>("/spend/reminders/weekly", { on })).data;
 }
 
 export interface PresenceUser {

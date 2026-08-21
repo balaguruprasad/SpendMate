@@ -1,111 +1,181 @@
 "use client";
 
 /**
- * Spend by month — one row per month: total spend as a single-hue proportion
- * bar (value labeled in text, per the dataviz rules: one series → one hue, no
- * legend, values in ink not in the bar color), plus charge counts and the
- * month's top category. The table IS the data view.
+ * Spend by month — like the original app: a range picker (Last 3 / 6 / all
+ * months), a vertical bar chart (single series → one green hue, value labels
+ * above each bar, no legend), and the cardholder × month matrix underneath
+ * with row totals. The matrix is the table view of the same data.
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TableSkeleton } from "@/components/shared/loading";
 import { formatPaise, useSpendTransactions } from "@/features/spend";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function monthLabel(key: string): string {
+  const [y, m] = key.split("-");
+  return `${MONTHS[Number(m) - 1]} ${y!.slice(2)}`;
+}
+
+/** Compact ₹ for bar labels: ₹12.4L / ₹85k / ₹950 */
+function compactPaise(paise: number): string {
+  const r = paise / 100;
+  if (r >= 100_000) return `₹${(r / 100_000).toFixed(1).replace(/\.0$/, "")}L`;
+  if (r >= 1_000) return `₹${(r / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return `₹${Math.round(r)}`;
+}
+
 export function MonthsView() {
   const { data, isLoading } = useSpendTransactions();
+  const [range, setRange] = useState<"3" | "6" | "all">("6");
 
-  const months = useMemo(() => {
-    const by = new Map<
-      string,
-      { total: number; count: number; pending: number; cats: Map<string, number> }
-    >();
-    for (const r of data?.rows ?? []) {
-      const key = r.effectiveDate.slice(0, 7); // yyyy-mm
-      const e = by.get(key) ?? { total: 0, count: 0, pending: 0, cats: new Map() };
-      e.total += r.amountPaise;
-      e.count += 1;
-      if (r.pending) e.pending += 1;
-      const cat = r.category || "Uncategorised";
-      e.cats.set(cat, (e.cats.get(cat) ?? 0) + r.amountPaise);
-      by.set(key, e);
+  const { monthKeys, totals, holders, max } = useMemo(() => {
+    const rows = data?.rows ?? [];
+    const allKeys = [...new Set(rows.map((r) => r.effectiveDate.slice(0, 7)))].sort();
+    const monthKeys =
+      range === "all" ? allKeys : allKeys.slice(-Number(range));
+    const keySet = new Set(monthKeys);
+
+    const totals = new Map<string, number>();
+    const byHolder = new Map<string, Map<string, number>>();
+    for (const r of rows) {
+      const key = r.effectiveDate.slice(0, 7);
+      if (!keySet.has(key)) continue;
+      totals.set(key, (totals.get(key) ?? 0) + r.amountPaise);
+      const h = byHolder.get(r.cardholder) ?? new Map<string, number>();
+      h.set(key, (h.get(key) ?? 0) + r.amountPaise);
+      byHolder.set(r.cardholder, h);
     }
-    const rows = [...by.entries()]
-      .sort(([a], [b]) => (a < b ? 1 : -1))
-      .map(([key, e]) => {
-        const [y, m] = key.split("-");
-        const topCat = [...e.cats.entries()].sort((a, b) => b[1] - a[1])[0];
-        return {
-          key,
-          label: `${MONTHS[Number(m) - 1]} ${y}`,
-          total: e.total,
-          count: e.count,
-          pending: e.pending,
-          topCat: topCat ? `${topCat[0]} (${formatPaise(topCat[1])})` : "—",
-        };
-      });
-    const max = Math.max(1, ...rows.map((r) => r.total));
-    return { rows, max };
-  }, [data?.rows]);
+
+    const holders = [...byHolder.entries()]
+      .map(([name, months]) => ({
+        name,
+        months,
+        total: [...months.values()].reduce((a, b) => a + b, 0),
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    const max = Math.max(1, ...monthKeys.map((k) => totals.get(k) ?? 0));
+    return { monthKeys, totals, holders, max };
+  }, [data?.rows, range]);
+
+  const grand = monthKeys.reduce((a, k) => a + (totals.get(k) ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-2xl border bg-card p-4 shadow-sm">
-        <h2 className="text-lg font-semibold">Spend by month</h2>
-        <p className="text-sm text-muted-foreground">
-          Card spend per statement month — the bar shows each month against the biggest month.
-        </p>
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold">Spend by month</h2>
+          <p className="text-sm text-muted-foreground">
+            Total card spend per statement month, and who spent it.
+          </p>
+        </div>
+        <div className="ml-auto">
+          <Select value={range} onValueChange={(v) => setRange(v as typeof range)}>
+            <SelectTrigger size="sm" className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="3">Last 3 months</SelectItem>
+              <SelectItem value="6">Last 6 months</SelectItem>
+              <SelectItem value="all">All months</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border bg-card shadow-sm">
-        {isLoading ? (
-          <div className="p-4">
-            <TableSkeleton rows={6} />
-          </div>
-        ) : (
-          <table className="w-full min-w-[48rem] text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Month</th>
-                <th className="w-1/2 px-4 py-3 font-medium">Spend</th>
-                <th className="px-4 py-3 text-right font-medium">Charges</th>
-                <th className="px-4 py-3 text-right font-medium">Pending</th>
-                <th className="px-4 py-3 font-medium">Top category</th>
-              </tr>
-            </thead>
-            <tbody>
-              {months.rows.map((m) => (
-                <tr key={m.key} className="border-b last:border-b-0 hover:bg-muted/40">
-                  <td className="whitespace-nowrap px-4 py-3 font-medium">{m.label}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-4 flex-1 overflow-hidden rounded-[4px] bg-muted">
-                        <div
-                          className="h-full rounded-[4px] bg-[#1e4f39]"
-                          style={{ width: `${Math.max(2, (m.total / months.max) * 100)}%` }}
-                          title={`${m.label}: ${formatPaise(m.total)}`}
-                        />
-                      </div>
-                      <span className="w-28 shrink-0 text-right tabular-nums">
-                        {formatPaise(m.total)}
-                      </span>
+      {isLoading ? (
+        <div className="rounded-2xl border bg-card p-4 shadow-sm">
+          <TableSkeleton rows={6} />
+        </div>
+      ) : (
+        <>
+          {/* Bar chart — value labels above bars, month labels below */}
+          <div className="rounded-2xl border bg-card p-5 shadow-sm">
+            <div className="overflow-x-auto">
+              <div
+                className="grid min-w-[36rem] items-end gap-3"
+                style={{ gridTemplateColumns: `repeat(${monthKeys.length}, minmax(0, 1fr))` }}
+              >
+                {monthKeys.map((k) => {
+                  const v = totals.get(k) ?? 0;
+                  return (
+                    <div key={k} className="flex flex-col items-center gap-1">
+                      <span className="text-xs font-medium tabular-nums">{compactPaise(v)}</span>
+                      <div
+                        className="w-full max-w-16 rounded-t-[4px] bg-[#1e4f39]"
+                        style={{ height: `${Math.max(3, (v / max) * 180)}px` }}
+                        title={`${monthLabel(k)}: ${formatPaise(v)}`}
+                      />
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{m.count}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {m.pending > 0 ? (
-                      <span className="font-medium text-[#8a6116]">{m.pending}</span>
-                    ) : (
-                      <span className="text-muted-foreground">0</span>
-                    )}
-                  </td>
-                  <td className="max-w-64 truncate px-4 py-3 text-muted-foreground">{m.topCat}</td>
+                  );
+                })}
+                {monthKeys.map((k) => (
+                  <span
+                    key={`${k}-label`}
+                    className="border-t pt-1.5 text-center text-xs text-muted-foreground"
+                  >
+                    {monthLabel(k)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Cardholder × month matrix */}
+          <div className="overflow-x-auto rounded-2xl border bg-card shadow-sm">
+            <table className="w-full min-w-[48rem] text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Cardholder</th>
+                  {monthKeys.map((k) => (
+                    <th key={k} className="px-4 py-3 text-right font-medium">
+                      {monthLabel(k)}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3 text-right font-medium">Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {holders.map((h) => (
+                  <tr key={h.name} className="border-b last:border-b-0 hover:bg-muted/40">
+                    <td className="whitespace-nowrap px-4 py-2.5 font-medium">{h.name}</td>
+                    {monthKeys.map((k) => {
+                      const v = h.months.get(k) ?? 0;
+                      return (
+                        <td key={k} className="px-4 py-2.5 text-right tabular-nums">
+                          {v ? formatPaise(v) : <span className="text-muted-foreground">—</span>}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums">
+                      {formatPaise(h.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t bg-muted/30 font-semibold">
+                  <td className="px-4 py-2.5">All cardholders</td>
+                  {monthKeys.map((k) => (
+                    <td key={k} className="px-4 py-2.5 text-right tabular-nums">
+                      {formatPaise(totals.get(k) ?? 0)}
+                    </td>
+                  ))}
+                  <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(grand)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

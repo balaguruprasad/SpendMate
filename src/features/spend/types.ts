@@ -24,6 +24,7 @@ export interface SpendTransaction {
   invoiceUrl: string;
   tags: string;
   pending: boolean;
+  reviewed: boolean;
   updatedAt: string;
 }
 

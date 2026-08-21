@@ -11,13 +11,13 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3, BellRing, CreditCard, Download, KeyRound, LogOut,
-  ReceiptText, ScrollText, Settings2, Trophy, Users, UsersRound,
+  ReceiptText, Settings2, Trophy, Users, UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_BASE } from "@/lib/constants";
 import { ChangePasswordDialog } from "@/components/layout/change-password-dialog";
-import { usePresence, useSpendCards } from "@/features/spend";
+import { usePresence } from "@/features/spend";
 
 const GREEN = "#1e4f39";
 
@@ -60,19 +60,11 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const presence = usePresence();
   const isAdmin = viewer.role === "ADMIN";
-  const cardsQuery = useSpendCards();
   const [pwOpen, setPwOpen] = useState(false);
   const base = ROLE_BASE[viewer.role];
 
   const online = presence.data?.users ?? [];
   const viewingAs = searchParams.get("as");
-
-  // Distinct cardholders (admin sidebar), deactivated cards folded in by label.
-  const holders = isAdmin
-    ? [...new Map((cardsQuery.data ?? []).map((c) => [c.holderId, c.holderName])).entries()]
-        .map(([id, name]) => ({ id, name }))
-        .sort((a, b) => a.name.localeCompare(b.name))
-    : [];
 
   const nav: { href: string; icon: LucideIcon; label: string; adminOnly?: boolean }[] = [
     { href: `${base}/charges`, icon: ReceiptText, label: "Transactions" },
@@ -86,14 +78,13 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
     { href: `${base}/cards`, icon: CreditCard, label: "Cards" },
     { href: `${base}/settings`, icon: Settings2, label: "Settings" },
     { href: `${base}/users`, icon: Users, label: "Users" },
-    { href: `${base}/audit`, icon: ScrollText, label: "Audit log" },
   ];
 
   return (
     <div className="flex min-h-svh flex-col bg-[#f4f7f5]">
       {/* Top bar — the Apps Script green header */}
       <header
-        className="flex items-center gap-4 px-4 py-3 text-white md:px-6"
+        className="sticky top-0 z-40 flex items-center gap-4 px-4 py-3 text-white shadow-md md:px-6"
         style={{ background: GREEN }}
       >
         <span className="rounded-lg bg-[#a7e0bd] px-3 py-1.5 text-sm font-bold tracking-wide text-[#123527]">
@@ -166,32 +157,6 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
                 />
               ))}
           </nav>
-
-          {isAdmin && holders.length > 0 && (
-            <div className="rounded-xl border bg-card p-2 shadow-sm">
-              <p className="px-3 pb-1 pt-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                View as cardholder
-              </p>
-              <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
-                {holders.map((h) => (
-                  <Link
-                    key={h.id}
-                    href={`${base}/charges?as=${h.id}`}
-                    className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                      viewingAs === h.id
-                        ? "bg-[#e7f2ec] font-medium text-[#1e4f39]"
-                        : "hover:bg-muted"
-                    }`}
-                  >
-                    <span className="flex size-6 items-center justify-center rounded-full bg-[#e7f2ec] text-[0.6rem] font-semibold text-[#1e4f39]">
-                      {initials(h.name)}
-                    </span>
-                    <span className="truncate">{h.name}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
 
           {isAdmin && (
             <nav className="flex flex-col gap-0.5 rounded-xl border bg-card p-2 shadow-sm">

@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { queryKeys } from "@/lib/api/query-keys";
+import { api } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/http-error";
 import type { UploadedFile } from "@/features/attachments";
 import * as service from "../services/spend.service";
@@ -201,4 +202,51 @@ export function useLoginActivity() {
     queryFn: service.loginActivity,
     refetchInterval: 30_000,
   });
+}
+
+export function useSetReviewed() {
+  const invalidate = useInvalidateSpend();
+  return useMutation({
+    mutationFn: ({ id, on }: { id: string; on: boolean }) => service.setReviewed(id, on),
+    onSuccess: (_r, { on }) => {
+      void invalidate();
+      toast.success(on ? "Marked reviewed — accounting done." : "Review cleared.");
+    },
+    onError: (error) => toast.error(errorMessage(error, "Could not update the review flag.")),
+  });
+}
+
+export function useSetWeeklyReminders() {
+  const invalidate = useInvalidateSpend();
+  return useMutation({
+    mutationFn: (on: boolean) => service.setWeeklyReminders(on),
+    onSuccess: (r) => {
+      void invalidate();
+      toast.success(r.on ? "Weekly auto-reminder is ON (Mondays ~9:00)." : "Weekly auto-reminder turned off.");
+    },
+    onError: (error) => toast.error(errorMessage(error, "Could not change the schedule.")),
+  });
+}
+
+/** Open an invoice in a new tab WITH auth: fetch as blob via the API client's
+ * bearer token, then show the object URL (a bare link has no Authorization
+ * header and gets a 401). The tab must be opened synchronously inside the
+ * click gesture — window.open after an await gets popup-blocked — so we open
+ * a blank tab first and navigate it once the blob arrives. */
+export async function openInvoice(invoiceUrl: string): Promise<void> {
+  if (!invoiceUrl.startsWith("/api")) {
+    window.open(invoiceUrl, "_blank", "noopener");
+    return;
+  }
+  const win = window.open("", "_blank");
+  try {
+    const blob = await api.getBlob(invoiceUrl.replace(/^\/api\/v1/, ""));
+    const url = URL.createObjectURL(blob);
+    if (win) win.location.href = url;
+    else window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    win?.close();
+    toast.error(error instanceof Error ? error.message : "Could not open the invoice.");
+  }
 }

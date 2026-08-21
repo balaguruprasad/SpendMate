@@ -11,8 +11,9 @@
  * old app's banner said.
  */
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Eye, Pencil, Upload, UserPlus, X } from "lucide-react";
+import { Check, Download, Eye, Pencil, Upload, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,20 +46,17 @@ import { downloadFile, toCsv } from "@/lib/csv";
 import { toast } from "@/lib/toast";
 import {
   formatPaise,
+  openInvoice,
   useAddHelper,
   useAttachInvoice,
   useRemoveHelper,
+  useSetReviewed,
   useSpendMe,
   useSpendTransactions,
   useUpdateTransaction,
   type SpendTransaction,
 } from "@/features/spend";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-
-function invoiceHref(url: string): string {
-  return url.startsWith("/api") ? API_BASE.replace(/\/api\/v1$/, "") + url : url;
-}
+import { ROLE_BASE } from "@/lib/constants";
 
 /** One stat tile, Apps-Script style: label on top, big number under. */
 function Tile({
@@ -89,10 +87,12 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
   const attach = useAttachInvoice();
   const addHelper = useAddHelper();
   const removeHelper = useRemoveHelper();
+  const setReviewed = useSetReviewed();
   const searchParams = useSearchParams();
   const viewAsId = isAdmin ? searchParams.get("as") : null;
+  const chargesBase = `${ROLE_BASE[isAdmin ? "ADMIN" : "MEMBER"]}/charges`;
 
-  const [pill, setPill] = useState<"all" | "pending" | "done">("all");
+  const [pill, setPill] = useState<"all" | "pending" | "done" | "review">("all");
   const [query, setQuery] = useState("");
   const [remarksFor, setRemarksFor] = useState<SpendTransaction | null>(null);
   const [remarksText, setRemarksText] = useState("");
@@ -121,15 +121,35 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
     const pending = scoped.filter((r) => r.pending).length;
     const submitted = scoped.filter((r) => r.status === "SUBMITTED").length;
     const noInvoice = scoped.filter((r) => r.status === "NO_INVOICE_NEEDED").length;
+    const toReview = scoped.filter((r) => !r.pending && !r.reviewed).length;
     const total = scoped.reduce((s, r) => s + r.amountPaise, 0);
-    return { pending, submitted, noInvoice, count: scoped.length, total };
+    return { pending, submitted, noInvoice, toReview, count: scoped.length, total };
   }, [scoped]);
+
+  // Admin overview: per-cardholder roll-up (click a row to "view as").
+  const holderSummary = useMemo(() => {
+    if (!isAdmin || viewAsId) return [];
+    const by = new Map<
+      string,
+      { id: string | null; name: string; total: number; count: number; pending: number }
+    >();
+    for (const r of data?.rows ?? []) {
+      const key = r.cardholder;
+      const e = by.get(key) ?? { id: r.cardholderId, name: key, total: 0, count: 0, pending: 0 };
+      e.total += r.amountPaise;
+      e.count += 1;
+      if (r.pending) e.pending += 1;
+      by.set(key, e);
+    }
+    return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [isAdmin, viewAsId, data?.rows]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return scoped.filter((r) => {
       if (pill === "pending" && !r.pending) return false;
       if (pill === "done" && r.pending) return false;
+      if (pill === "review" && (r.pending || r.reviewed)) return false;
       if (!q) return true;
       return (
         r.description.toLowerCase().includes(q) ||
@@ -205,10 +225,77 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
       <input ref={fileRef} type="file" hidden accept=".pdf,.png,.jpg,.jpeg" onChange={onFileChosen} />
 
       {viewAsName && (
-        <p className="text-sm text-muted-foreground">
-          Seeing what <span className="font-semibold text-foreground">{viewAsName}</span> sees —
-          uploads and remarks you make here are saved to their charges.
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            Seeing what <span className="font-semibold text-foreground">{viewAsName}</span> sees —
+            uploads and remarks you make here are saved to their charges.
+          </p>
+          <Link
+            href={chargesBase}
+            className="inline-flex items-center gap-1 rounded-full border border-[#1e4f39] px-3 py-1 text-xs font-medium text-[#1e4f39] hover:bg-[#e7f2ec]"
+          >
+            <X className="size-3.5" /> Exit — back to all charges
+          </Link>
+        </div>
+      )}
+
+      {/* Admin overview: totals + per-cardholder roll-up (click → view as) */}
+      {isAdmin && !viewAsId && (
+        <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm">
+          <div className="flex flex-col gap-3 @2xl/main:flex-row">
+            <Tile label="Total spend" value={formatPaise(stats.total)} />
+            <Tile label="Cardholders" value={String(holderSummary.length)} />
+            <Tile label="Invoices pending" value={String(stats.pending)} tone="amber" />
+            <Tile label="To review" value={String(stats.toReview)} />
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="px-3 py-2 font-medium">Cardholder</th>
+                <th className="px-3 py-2 text-right font-medium">Net total</th>
+                <th className="px-3 py-2 text-right font-medium">Line items</th>
+                <th className="px-3 py-2 text-right font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {holderSummary.map((h) => {
+                const row = (
+                  <>
+                    <td className="px-3 py-2 font-medium">{h.name}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatPaise(h.total)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{h.count}</td>
+                    <td className="px-3 py-2 text-right">
+                      {h.pending > 0 ? (
+                        <span className="font-medium text-[#8a6116]">{h.pending} pending</span>
+                      ) : (
+                        <span className="rounded-full bg-[#e7f2ec] px-2.5 py-0.5 text-xs font-medium text-[#1e4f39]">
+                          All done
+                        </span>
+                      )}
+                    </td>
+                  </>
+                );
+                return h.id ? (
+                  <tr
+                    key={h.name}
+                    className="cursor-pointer border-b last:border-b-0 hover:bg-[#e7f2ec]/50"
+                    title={`View as ${h.name}`}
+                    onClick={() => (window.location.href = `${chargesBase}?as=${h.id}`)}
+                  >
+                    {row}
+                  </tr>
+                ) : (
+                  <tr key={h.name} className="border-b last:border-b-0">
+                    {row}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-xs text-muted-foreground">
+            Click a cardholder to view (and complete) their charges as they see them.
+          </p>
+        </div>
       )}
       {!isAdmin && (me?.helperFor.length ?? 0) > 0 && (
         <p className="text-sm text-muted-foreground">
@@ -220,14 +307,16 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
         </p>
       )}
 
-      {/* Stat tiles */}
-      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm @2xl/main:flex-row">
-        <Tile label="Pending — needs action" value={String(stats.pending)} tone="amber" />
-        <Tile label="Invoice submitted" value={String(stats.submitted)} />
-        <Tile label="No invoice needed" value={String(stats.noInvoice)} />
-        <Tile label="Total charges" value={String(stats.count)} />
-        <Tile label="Total spend" value={formatPaise(stats.total)} />
-      </div>
+      {/* Per-person stat tiles (member view + admin's view-as) */}
+      {(!isAdmin || viewAsId) && (
+        <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm @2xl/main:flex-row">
+          <Tile label="Pending — needs action" value={String(stats.pending)} tone="amber" />
+          <Tile label="Invoice submitted" value={String(stats.submitted)} />
+          <Tile label="No invoice needed" value={String(stats.noInvoice)} />
+          <Tile label="Total charges" value={String(stats.count)} />
+          <Tile label="Total spend" value={formatPaise(stats.total)} />
+        </div>
+      )}
 
       {/* Pills + search + report */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-card p-4 shadow-sm">
@@ -236,6 +325,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
             ["all", `All (${stats.count})`],
             ["pending", `Pending (${stats.pending})`],
             ["done", `Done (${stats.count - stats.pending})`],
+            ...(isAdmin ? ([["review", `To review (${stats.toReview})`]] as const) : []),
           ] as const
         ).map(([key, label]) => (
           <button
@@ -338,22 +428,30 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                     {formatPaise(r.amountPaise)}
                   </td>
                   <td className="px-4 py-2.5">
-                    <Select
-                      value={r.category || "__none"}
-                      onValueChange={(v) => setCategory(r, v === "__none" ? "" : v)}
-                    >
-                      <SelectTrigger size="sm" className="w-40">
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none">—</SelectItem>
-                        {categories.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {isAdmin ? (
+                      <Select
+                        value={r.category || "__none"}
+                        onValueChange={(v) => setCategory(r, v === "__none" ? "" : v)}
+                      >
+                        <SelectTrigger size="sm" className="w-40">
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">—</SelectItem>
+                          {categories.map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : r.category ? (
+                      // Categories are auto-assigned (GST / markup / penny testing);
+                      // cardholders see them read-only.
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{r.category}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </td>
                   {tagOptions.length > 0 && (
                     <td className="px-4 py-2.5">
@@ -393,20 +491,41 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                       </Popover>
                     </td>
                   )}
-                  <td className="whitespace-nowrap px-4 py-2.5">{statusChip(r)}</td>
+                  <td className="whitespace-nowrap px-4 py-2.5">
+                    <span className="flex items-center gap-1.5">
+                      {statusChip(r)}
+                      {r.reviewed && (
+                        <span
+                          className="rounded-full bg-[#1e4f39] px-2.5 py-1 text-xs font-medium text-white"
+                          title="Reviewed by accounts — accounting done"
+                        >
+                          Accounting done
+                        </span>
+                      )}
+                      {isAdmin && !r.pending && !r.reviewed && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full border border-[#1e4f39]/40 px-2 py-0.5 text-xs text-[#1e4f39] hover:bg-[#e7f2ec]"
+                          title="Accounts sign-off: mark reviewed & accounting done"
+                          onClick={() => setReviewed.mutate({ id: r.id, on: true })}
+                        >
+                          <Check className="size-3" /> Review
+                        </button>
+                      )}
+                    </span>
+                  </td>
                   <td className="whitespace-nowrap px-4 py-2.5">
                     <div className="flex items-center gap-1.5">
                       {r.invoiceUrl ? (
                         <>
-                          <a
-                            href={invoiceHref(r.invoiceUrl)}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => void openInvoice(r.invoiceUrl)}
                             className="inline-flex items-center gap-1 text-sm text-[#1e4f39] underline-offset-2 hover:underline"
                             title={r.invoiceName}
                           >
                             <Eye className="size-3.5" /> View
-                          </a>
+                          </button>
                           <Button
                             size="sm"
                             variant="ghost"

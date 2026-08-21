@@ -113,6 +113,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
  * No auto-refresh/retry: a streamed file body can't be safely replayed; callers
  * re-trigger the upload if the session lapsed.
  */
+/** Authenticated binary GET (attachment downloads) — returns the raw Blob. */
+async function getBlob(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const res = await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}${path}`, {
+    credentials: "include",
+    headers,
+  });
+  if (!res.ok) throw await ApiError.fromResponse(res);
+  return res.blob();
+}
+
 async function upload<T>(path: string, form: FormData): Promise<T> {
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
@@ -135,6 +147,7 @@ export const api = {
   put: <T>(p: string, body?: unknown) =>
     request<T>(p, { method: "PUT", body: JSON.stringify(body) }),
   delete: <T>(p: string) => request<T>(p, { method: "DELETE" }),
+  getBlob,
   upload,
 };
 
