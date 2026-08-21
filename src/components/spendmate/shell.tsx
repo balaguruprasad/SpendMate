@@ -6,13 +6,14 @@
  * chip), and a white sidebar column. Admins get the tool sections plus a
  * "View as cardholder" list; cardholders get a minimal rail.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import {
-  BarChart3, BellRing, CreditCard, Download, Eye, KeyRound, Landmark, LogOut,
-  ReceiptText, Settings2, Trophy, Users, UsersRound,
+  BarChart3, BellRing, ClipboardCheck, CreditCard, Download, Eye, KeyRound,
+  Landmark, LogOut, PanelLeftClose, PanelLeftOpen, ReceiptText, Settings2,
+  Trophy, Users, UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -37,21 +38,24 @@ function NavLink({
   icon: Icon,
   label,
   active,
+  collapsed,
 }: {
   href: string;
   icon: LucideIcon;
   label: string;
   active: boolean;
+  collapsed: boolean;
 }) {
   return (
     <Link
       href={href}
+      title={collapsed ? label : undefined}
       className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-        active ? "bg-[#e7f2ec] font-medium text-[#1e4f39]" : "hover:bg-muted"
-      }`}
+        collapsed ? "justify-center px-2" : ""
+      } ${active ? "bg-[#e7f2ec] font-medium text-[#1e4f39]" : "hover:bg-muted"}`}
     >
       <Icon className="size-4 shrink-0" />
-      {label}
+      {!collapsed && label}
     </Link>
   );
 }
@@ -64,7 +68,18 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
   const presence = usePresence();
   const isAdmin = viewer.role === "ADMIN";
   const [pwOpen, setPwOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const base = ROLE_BASE[viewer.role];
+
+  useEffect(() => {
+    setCollapsed(localStorage.getItem("spend.sidebar") === "collapsed");
+  }, []);
+  function toggleSidebar() {
+    setCollapsed((c) => {
+      localStorage.setItem("spend.sidebar", c ? "open" : "collapsed");
+      return !c;
+    });
+  }
 
   const online = presence.data?.users ?? [];
   const viewingAs = searchParams.get("as");
@@ -75,6 +90,7 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
     { href: `${base}/top`, icon: Trophy, label: "Top spends", adminOnly: true },
     { href: `${base}/reminders`, icon: BellRing, label: "Reminders", adminOnly: true },
     { href: `${base}/settlements`, icon: Landmark, label: "Settlements", adminOnly: true },
+    { href: `${base}/review`, icon: ClipboardCheck, label: "Review", adminOnly: true },
     { href: `${base}/logins`, icon: UsersRound, label: "Who's logged in", adminOnly: true },
   ];
   const adminTools: { href: string; icon: LucideIcon; label: string }[] = [
@@ -175,9 +191,29 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex flex-1 gap-4 p-4 md:gap-6 md:p-6">
-        {/* Sidebar */}
-        <aside className="hidden w-60 shrink-0 flex-col gap-4 md:flex">
+        {/* Sidebar — expandable/collapsible */}
+        <aside
+          className={`hidden shrink-0 flex-col gap-4 transition-all md:flex ${
+            collapsed ? "w-14" : "w-60"
+          }`}
+        >
           <nav className="flex flex-col gap-0.5 rounded-xl border bg-card p-2 shadow-sm">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              title={collapsed ? "Expand sidebar" : "Compress sidebar"}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted ${
+                collapsed ? "justify-center px-2" : ""
+              }`}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="size-4 shrink-0" />
+              ) : (
+                <>
+                  <PanelLeftClose className="size-4 shrink-0" /> Compress
+                </>
+              )}
+            </button>
             {nav
               .filter((n) => !n.adminOnly || isAdmin)
               .map((n) => (
@@ -187,15 +223,18 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
                   icon={n.icon}
                   label={n.label}
                   active={pathname.startsWith(n.href) && !viewingAs}
+                  collapsed={collapsed}
                 />
               ))}
           </nav>
 
           {isAdmin && (
             <nav className="flex flex-col gap-0.5 rounded-xl border bg-card p-2 shadow-sm">
-              <p className="px-3 pb-1 pt-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Admin tools
-              </p>
+              {!collapsed && (
+                <p className="px-3 pb-1 pt-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Admin tools
+                </p>
+              )}
               {adminTools.map((n) => (
                 <NavLink
                   key={n.href}
@@ -203,6 +242,7 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
                   icon={n.icon}
                   label={n.label}
                   active={pathname.startsWith(n.href)}
+                  collapsed={collapsed}
                 />
               ))}
             </nav>

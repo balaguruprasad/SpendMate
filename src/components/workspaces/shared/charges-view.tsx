@@ -50,7 +50,6 @@ import {
   useAddHelper,
   useAttachInvoice,
   useRemoveHelper,
-  useSetReviewed,
   useSpendMe,
   useSpendTransactions,
   useUpdateTransaction,
@@ -87,13 +86,16 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
   const attach = useAttachInvoice();
   const addHelper = useAddHelper();
   const removeHelper = useRemoveHelper();
-  const setReviewed = useSetReviewed();
   const searchParams = useSearchParams();
   const viewAsId = isAdmin ? searchParams.get("as") : null;
   const chargesBase = `${ROLE_BASE[isAdmin ? "ADMIN" : "MEMBER"]}/charges`;
 
-  const [pill, setPill] = useState<"all" | "pending" | "done" | "review">("all");
+  const [pill, setPill] = useState<"all" | "pending" | "done">("all");
   const [query, setQuery] = useState("");
+  // Column filters (G-Sheet style): description text, category + tag dropdowns.
+  const [fDesc, setFDesc] = useState("");
+  const [fCat, setFCat] = useState("all");
+  const [fTag, setFTag] = useState("all");
   const [remarksFor, setRemarksFor] = useState<SpendTransaction | null>(null);
   const [remarksText, setRemarksText] = useState("");
   const [helpersOpen, setHelpersOpen] = useState(false);
@@ -147,10 +149,18 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const fd = fDesc.trim().toLowerCase();
     return scoped.filter((r) => {
       if (pill === "pending" && !r.pending) return false;
       if (pill === "done" && r.pending) return false;
-      if (pill === "review" && (r.pending || r.reviewed)) return false;
+      if (fd && !r.description.toLowerCase().includes(fd)) return false;
+      if (fCat !== "all") {
+        if (fCat === "__none" ? r.category !== "" : r.category !== fCat) return false;
+      }
+      if (fTag !== "all") {
+        const tags = r.tags.split(",").map((s) => s.trim());
+        if (fTag === "__none" ? r.tags.trim() !== "" : !tags.includes(fTag)) return false;
+      }
       if (!q) return true;
       return (
         r.description.toLowerCase().includes(q) ||
@@ -160,7 +170,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
         r.tags.toLowerCase().includes(q)
       );
     });
-  }, [scoped, pill, query]);
+  }, [scoped, pill, query, fDesc, fCat, fTag]);
 
   const { page, setPage, pageCount, pageRows } = usePagedRows(filtered, 20);
 
@@ -212,14 +222,6 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
       toCsv([header, ...body]),
     );
   }
-
-  const statusChip = (r: SpendTransaction) => {
-    if (r.pending)
-      return <span className="rounded-full bg-[#fdf3df] px-2.5 py-1 text-xs font-medium text-[#8a6116]">Pending</span>;
-    if (r.status === "SUBMITTED")
-      return <span className="rounded-full bg-[#e7f2ec] px-2.5 py-1 text-xs font-medium text-[#1e4f39]">Submitted</span>;
-    return <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">No invoice needed</span>;
-  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -326,7 +328,6 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
             ["all", `All (${stats.count})`],
             ["pending", `Pending (${stats.pending})`],
             ["done", `Done (${stats.count - stats.pending})`],
-            ...(isAdmin ? ([["review", `To review (${stats.toReview})`]] as const) : []),
           ] as const
         ).map(([key, label]) => (
           <button
@@ -376,20 +377,87 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
           <table className="w-full min-w-[64rem] text-sm">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Description</th>
-                {isAdmin && !viewAsId && <th className="px-4 py-3 font-medium">Cardholder</th>}
-                <th className="px-4 py-3 text-right font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Category</th>
-                {tagOptions.length > 0 && <th className="px-4 py-3 font-medium">{tagLabel}</th>}
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Invoice</th>
+                <th className="px-4 pb-1 pt-3 font-medium">Date</th>
+                <th className="px-4 pb-1 pt-3 font-medium">Description</th>
+                {isAdmin && !viewAsId && <th className="px-4 pb-1 pt-3 font-medium">Cardholder</th>}
+                <th className="px-4 pb-1 pt-3 text-right font-medium">Amount</th>
+                <th className="px-4 pb-1 pt-3 font-medium">Category</th>
+                {tagOptions.length > 0 && <th className="px-4 pb-1 pt-3 font-medium">{tagLabel}</th>}
+                <th className="px-4 pb-1 pt-3 font-medium">Remarks</th>
+                <th className="px-4 pb-1 pt-3 font-medium">Invoice</th>
+                <th className="w-10 px-2 pb-1 pt-3" title="Reviewed by accounts" />
+              </tr>
+              {/* Column filters */}
+              <tr className="border-b">
+                <th className="px-4 pb-2" />
+                <th className="px-4 pb-2">
+                  <Input
+                    placeholder="Filter…"
+                    className="h-7 w-full max-w-48 text-xs font-normal"
+                    value={fDesc}
+                    onChange={(e) => {
+                      setFDesc(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </th>
+                {isAdmin && !viewAsId && <th className="px-4 pb-2" />}
+                <th className="px-4 pb-2" />
+                <th className="px-4 pb-2">
+                  <Select
+                    value={fCat}
+                    onValueChange={(v) => {
+                      setFCat(v);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-32 text-xs font-normal" size="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="__none">— blank —</SelectItem>
+                      {categories.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </th>
+                {tagOptions.length > 0 && (
+                  <th className="px-4 pb-2">
+                    <Select
+                      value={fTag}
+                      onValueChange={(v) => {
+                        setFTag(v);
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-7 w-32 text-xs font-normal" size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="__none">— blank —</SelectItem>
+                        {tagOptions.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </th>
+                )}
+                <th className="px-4 pb-2" />
+                <th className="px-4 pb-2" />
+                <th className="px-2 pb-2" />
               </tr>
             </thead>
             <tbody>
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
                     {pill === "pending" ? "Nothing pending here — all done." : "No charges match."}
                   </td>
                 </tr>
@@ -403,24 +471,6 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                     <span className="block truncate font-medium" title={r.description}>
                       {r.description}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRemarksFor(r);
-                        setRemarksText(r.remarks);
-                      }}
-                      className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      title="Edit remarks"
-                    >
-                      <Pencil className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                      {r.remarks ? (
-                        <span className="max-w-60 truncate">“{r.remarks}”</span>
-                      ) : (
-                        <span className="italic opacity-0 transition-opacity group-hover:opacity-100">
-                          add remarks
-                        </span>
-                      )}
-                    </button>
                   </td>
                   {isAdmin && !viewAsId && (
                     <td className="whitespace-nowrap px-4 py-2.5">{r.cardholder}</td>
@@ -446,16 +496,45 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                           ))}
                         </SelectContent>
                       </Select>
-                    ) : r.category ? (
-                      // Categories are auto-assigned (GST / markup / penny testing);
-                      // cardholders see them read-only.
-                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{r.category}</span>
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      // Cardholders: read-only, except the Penny-testing toggle
+                      // on nominal/Others charges.
+                      <span className="flex items-center gap-1.5">
+                        {r.category ? (
+                          <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{r.category}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                        {!r.reviewed && r.category === "Penny testing" && (
+                          <button
+                            type="button"
+                            className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                            title="Not a penny test — put it back under Others"
+                            onClick={() => setCategory(r, "Others")}
+                          >
+                            Undo
+                          </button>
+                        )}
+                        {!r.reviewed && (r.category === "" || r.category === "Others") && (
+                          <button
+                            type="button"
+                            className="rounded-full border border-[#1e4f39]/40 px-2 py-0.5 text-xs text-[#1e4f39] hover:bg-[#e7f2ec]"
+                            title="Mark this charge as a bank penny test (nominal debit/credit)"
+                            onClick={() => setCategory(r, "Penny testing")}
+                          >
+                            Penny?
+                          </button>
+                        )}
+                      </span>
                     )}
                   </td>
                   {tagOptions.length > 0 && (
                     <td className="px-4 py-2.5">
+                      {r.reviewed && !isAdmin ? (
+                        <span className="block w-40 truncate text-sm" title={r.tags}>
+                          {r.tags || "—"}
+                        </span>
+                      ) : (
                       <Popover>
                         <PopoverTrigger asChild>
                           <button
@@ -490,30 +569,34 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                           </div>
                         </PopoverContent>
                       </Popover>
+                      )}
                     </td>
                   )}
-                  <td className="whitespace-nowrap px-4 py-2.5">
-                    <span className="flex items-center gap-1.5">
-                      {statusChip(r)}
-                      {r.reviewed && (
-                        <span
-                          className="rounded-full bg-[#1e4f39] px-2.5 py-1 text-xs font-medium text-white"
-                          title="Reviewed by accounts — accounting done"
-                        >
-                          Accounting done
-                        </span>
-                      )}
-                      {isAdmin && !r.pending && !r.reviewed && (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full border border-[#1e4f39]/40 px-2 py-0.5 text-xs text-[#1e4f39] hover:bg-[#e7f2ec]"
-                          title="Accounts sign-off: mark reviewed & accounting done"
-                          onClick={() => setReviewed.mutate({ id: r.id, on: true })}
-                        >
-                          <Check className="size-3" /> Review
-                        </button>
-                      )}
-                    </span>
+                  <td className="max-w-64 px-4 py-2.5">
+                    {r.reviewed && !isAdmin ? (
+                      <span className="block truncate text-xs text-muted-foreground" title={r.remarks}>
+                        {r.remarks || "—"}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRemarksFor(r);
+                          setRemarksText(r.remarks);
+                        }}
+                        className="group flex w-full items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground"
+                        title="Edit remarks"
+                      >
+                        <Pencil className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                        {r.remarks ? (
+                          <span className="truncate">{r.remarks}</span>
+                        ) : (
+                          <span className="italic opacity-40 transition-opacity group-hover:opacity-100">
+                            add remarks
+                          </span>
+                        )}
+                      </button>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2.5">
                     <div className="flex items-center gap-1.5">
@@ -527,16 +610,20 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                           >
                             <Eye className="size-3.5" /> View
                           </button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 px-2 text-xs"
-                            loading={uploadingId === r.id}
-                            onClick={() => pickFile(r.id)}
-                          >
-                            Replace
-                          </Button>
+                          {!(r.reviewed && !isAdmin) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              loading={uploadingId === r.id}
+                              onClick={() => pickFile(r.id)}
+                            >
+                              Replace
+                            </Button>
+                          )}
                         </>
+                      ) : r.reviewed && !isAdmin ? (
+                        <span className="text-xs text-muted-foreground">—</span>
                       ) : (
                         <Button
                           size="sm"
@@ -549,6 +636,16 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                         </Button>
                       )}
                     </div>
+                  </td>
+                  <td className="px-2 py-2.5">
+                    {r.reviewed && (
+                      <span
+                        className="inline-flex size-5 items-center justify-center rounded-full bg-[#1e4f39] text-white"
+                        title="Accounts has reviewed this charge — accounting done"
+                      >
+                        <Check className="size-3.5" />
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
