@@ -37,7 +37,7 @@ export function MonthsView() {
   const [range, setRange] = useState<"3" | "6" | "all">("6");
 
   const { monthKeys, totals, holders, max } = useMemo(() => {
-    const rows = data?.rows ?? [];
+    const rows = (data?.rows ?? []).filter((r) => !r.settlement);
     const allKeys = [...new Set(rows.map((r) => r.effectiveDate.slice(0, 7)))].sort();
     const monthKeys =
       range === "all" ? allKeys : allKeys.slice(-Number(range));

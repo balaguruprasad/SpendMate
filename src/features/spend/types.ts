@@ -25,6 +25,8 @@ export interface SpendTransaction {
   tags: string;
   pending: boolean;
   reviewed: boolean;
+  /** Card settlement credit (PAYMENT RECEIVED) — shown under Settlements, not in spends. */
+  settlement: boolean;
   updatedAt: string;
 }
 

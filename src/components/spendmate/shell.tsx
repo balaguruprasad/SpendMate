@@ -9,13 +9,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
-  BarChart3, BellRing, CreditCard, Download, KeyRound, LogOut,
+  BarChart3, BellRing, CreditCard, Download, Eye, KeyRound, Landmark, LogOut,
   ReceiptText, Settings2, Trophy, Users, UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_BASE } from "@/lib/constants";
+import { toast } from "@/lib/toast";
 import { ChangePasswordDialog } from "@/components/layout/change-password-dialog";
 import { usePresence } from "@/features/spend";
 
@@ -55,7 +57,8 @@ function NavLink({
 }
 
 export function SpendShell({ children }: { children: React.ReactNode }) {
-  const { user, viewer, logout } = useAuth();
+  const { user, viewer, logout, isImpersonating, realUser, stopImpersonating } = useAuth();
+  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const presence = usePresence();
@@ -71,6 +74,7 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
     { href: `${base}/months`, icon: BarChart3, label: "Spend by month", adminOnly: true },
     { href: `${base}/top`, icon: Trophy, label: "Top spends", adminOnly: true },
     { href: `${base}/reminders`, icon: BellRing, label: "Reminders", adminOnly: true },
+    { href: `${base}/settlements`, icon: Landmark, label: "Settlements", adminOnly: true },
     { href: `${base}/logins`, icon: UsersRound, label: "Who's logged in", adminOnly: true },
   ];
   const adminTools: { href: string; icon: LucideIcon; label: string }[] = [
@@ -140,6 +144,35 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
+
+      {/* Impersonation strip — the "View as" from Users switches the whole
+          session to the target, so the exit must live in the shell. */}
+      {isImpersonating && (
+        <div className="sticky top-[3.75rem] z-30 flex items-center gap-3 border-b border-[#8a6116]/30 bg-[#fdf3df] px-4 py-2 text-sm text-[#5b430f] md:px-6">
+          <Eye className="size-4 shrink-0" />
+          <p className="min-w-0 flex-1 truncate">
+            Viewing as <span className="font-semibold">{user.fullName}</span>
+            {realUser ? ` — signed in from ${realUser.fullName}'s admin account.` : "."}
+          </p>
+          <button
+            type="button"
+            className="shrink-0 rounded-full border border-[#8a6116]/40 px-3 py-1 font-medium hover:bg-[#8a6116]/10"
+            onClick={() => {
+              void (async () => {
+                try {
+                  await stopImpersonating();
+                  toast.success("Back to your admin account.");
+                  router.push("/admin/charges");
+                } catch {
+                  toast.error("Could not exit — please try again.");
+                }
+              })();
+            }}
+          >
+            Exit view as
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-1 gap-4 p-4 md:gap-6 md:p-6">
         {/* Sidebar */}

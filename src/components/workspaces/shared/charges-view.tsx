@@ -113,7 +113,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
   }, [viewAsId, data?.rows]);
 
   const scoped = useMemo(() => {
-    const rows = data?.rows ?? [];
+    const rows = (data?.rows ?? []).filter((r) => !r.settlement);
     return viewAsId ? rows.filter((r) => r.cardholderId === viewAsId) : rows;
   }, [data?.rows, viewAsId]);
 
@@ -134,6 +134,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
       { id: string | null; name: string; total: number; count: number; pending: number }
     >();
     for (const r of data?.rows ?? []) {
+      if (r.settlement) continue;
       const key = r.cardholder;
       const e = by.get(key) ?? { id: r.cardholderId, name: key, total: 0, count: 0, pending: 0 };
       e.total += r.amountPaise;

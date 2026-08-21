@@ -28,7 +28,11 @@ export function TopView() {
 
   const monthKeys = useMemo(
     () =>
-      [...new Set((data?.rows ?? []).map((r) => r.effectiveDate.slice(0, 7)))].sort().reverse(),
+      [
+        ...new Set(
+          (data?.rows ?? []).filter((r) => !r.settlement).map((r) => r.effectiveDate.slice(0, 7)),
+        ),
+      ].sort().reverse(),
     [data?.rows],
   );
   const selected = month ?? monthKeys[0] ?? null;
@@ -36,7 +40,7 @@ export function TopView() {
   const top = useMemo(() => {
     if (!selected) return [];
     return (data?.rows ?? [])
-      .filter((r) => r.effectiveDate.slice(0, 7) === selected)
+      .filter((r) => !r.settlement && r.effectiveDate.slice(0, 7) === selected)
       .sort((a, b) => b.amountPaise - a.amountPaise)
       .slice(0, 10);
   }, [data?.rows, selected]);
