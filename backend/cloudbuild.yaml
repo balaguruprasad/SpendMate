@@ -1,0 +1,77 @@
+# Cloud Build pipeline: deploy the backend to App Engine (Standard, Node.js).
+#
+# It renders app.yaml from Secret Manager secrets + the substitutions below (so no secret is
+# ever committed), then runs `gcloud app deploy`. App Engine's own buildpack installs deps and
+# runs the `gcp-build` script (tsc) before starting `node dist/index.js`.
+#
+# Submit:
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions=_CLOUDSQL_INSTANCE=mesa-startup-lab:asia-south1:YOUR_INSTANCE
+#
+# Prerequisites: see DEPLOY.md (enable APIs, create the App Engine app, create the secrets,
+# and grant the Cloud Build service account App Engine Deployer + Service Account User).
+
+substitutions:
+  _CLOUDSQL_INSTANCE: "mesa-startup-lab:asia-south1:mesa-tech-infra" # gcloud sql instances describe <i> --format='value(connectionName)'
+  _CORS_ORIGINS: "https://finance.mesaschool.co.in"
+  _DOCS_USERNAME: "gaurav@mesaschool.co"
+  _GCS_BUCKET_NAME: "mesa_tech_assets"
+  _GCS_BUCKET_PREFIX: "mesa-finance"
+  _GCS_PROJECT_ID: "mesa-startup-lab"
+
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: render-and-deploy
+    entrypoint: bash
+    secretEnv: [DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, DOCS_PASSWORD]
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        # Render app.yaml. Secrets come from secretEnv (Secret Manager); the rest are inline.
+        cat > app.yaml <<YAML
+        runtime: nodejs22
+        instance_class: F2
+        automatic_scaling:
+          min_instances: 1
+          max_instances: 4
+          max_concurrent_requests: 40
+        beta_settings:
+          cloud_sql_instances: "${_CLOUDSQL_INSTANCE}"
+        env_variables:
+          NODE_ENV: "production"
+          DATABASE_URL: "$${DATABASE_URL}"
+          DB_POOL_MAX: "10"
+          DB_SSL: "false"
+          JWT_ACCESS_SECRET: "$${JWT_ACCESS_SECRET}"
+          JWT_REFRESH_SECRET: "$${JWT_REFRESH_SECRET}"
+          CORS_ORIGINS: "${_CORS_ORIGINS}"
+          DOCS_USERNAME: "${_DOCS_USERNAME}"
+          DOCS_PASSWORD: "$${DOCS_PASSWORD}"
+          LOG_LEVEL: "info"
+          GCS_BUCKET_NAME: "${_GCS_BUCKET_NAME}"
+          GCS_BUCKET_PREFIX: "${_GCS_BUCKET_PREFIX}"
+          GCS_PROJECT_ID: "${_GCS_PROJECT_ID}"
+          GCS_USE_SIGNED_URLS: "true"
+        YAML
+
+        echo "Rendered app.yaml:"
+        sed -E 's/(SECRET|PASSWORD|DATABASE_URL): .*/\1: ****/' app.yaml
+
+        gcloud app deploy app.yaml --quiet --project="$PROJECT_ID"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/mesa-finance-database-url/versions/latest
+      env: DATABASE_URL
+    - versionName: projects/$PROJECT_ID/secrets/mesa-finance-jwt-access-secret/versions/latest
+      env: JWT_ACCESS_SECRET
+    - versionName: projects/$PROJECT_ID/secrets/mesa-finance-jwt-refresh-secret/versions/latest
+      env: JWT_REFRESH_SECRET
+    - versionName: projects/$PROJECT_ID/secrets/mesa-finance-docs-password/versions/latest
+      env: DOCS_PASSWORD
+
+timeout: 1200s
+options:
+  logging: CLOUD_LOGGING_ONLY

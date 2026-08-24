@@ -1,0 +1,19 @@
+# Files NOT uploaded to App Engine / Cloud Build. App Engine rebuilds from source
+# (npm ci + gcp-build), so node_modules and dist are excluded. app.yaml is intentionally
+# NOT listed here — it must be deployed.
+.git
+.gitignore
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+# Root-level docs only (markdown). MUST be anchored with a leading slash, or it also
+# excludes src/core/docs/ (the OpenAPI registry) and breaks the Cloud Build tsc compile.
+/docs/
+*.tsbuildinfo
+# Never upload the GCS service-account key (use the runtime service account identity instead).
+mesa-startup-lab-*.json

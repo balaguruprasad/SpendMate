@@ -1,0 +1,198 @@
+// SpendMate — Mesa's credit-card invoice tracker (rebuilt from the G-Sheets
+// v2 app). Prisma is used for SCHEMA + MIGRATIONS ONLY; the app queries via
+// Kysely (prisma-kysely emits src/core/db/types.ts).
+//
+// Domain: the admin imports card statement rows (append-only). Cardholders
+// (matched by card number / last-4) upload the invoice for each charge or
+// mark it as needing none (category like GST / bank charges), pick the
+// configurable Tag (e.g. Department), and can nominate HELPERS who may act
+// on their charges. Reminders chase whoever still has pending charges.
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator kysely {
+  provider = "prisma-kysely"
+  output   = "../src/core/db"
+  fileName = "types.ts"
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum TxnStatus {
+  PENDING
+  SUBMITTED
+  NO_INVOICE_NEEDED
+}
+
+enum AttachmentEntity {
+  TRANSACTION
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(MEMBER)
+  /** Unused in SpendMate; kept nullable so the shared auth core stays as-is. */
+  departmentId String?  @db.Uuid
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+  notifications Notification[]
+  attachments   Attachment[]
+  auditLogs     AuditLog[]
+  cards         Card[]
+  helpersGiven  CardHelper[]   @relation("HelperHolder")
+  helperOf      CardHelper[]   @relation("HelperUser")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @db.Uuid
+  tokenHash         String    @unique
+  expiresAt         DateTime  @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+  replacedByTokenId String?   @db.Uuid
+  userAgent         String?
+  ip                String?
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// A company credit card belonging to one person. `number` stores digits only
+// (full number or last-4); transactions match on exact or last-4 equality.
+model Card {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number      String
+  label       String   @default("")
+  holderId    String   @db.Uuid
+  remindersOn Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  holder       User          @relation(fields: [holderId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([holderId])
+  @@map("cards")
+}
+
+// A cardholder lets a HELPER see and complete their charges (upload invoices,
+// set category/tag/remarks). Reminders still go only to the cardholder.
+model CardHelper {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  holderId String @db.Uuid
+  helperId String @db.Uuid
+
+  holder User @relation("HelperHolder", fields: [holderId], references: [id], onDelete: Cascade)
+  helper User @relation("HelperUser", fields: [helperId], references: [id], onDelete: Cascade)
+
+  @@unique([holderId, helperId])
+  @@map("card_helpers")
+}
+
+// One statement line. Admin-imported columns are append-only; the app owns
+// category/status/remarks/invoice/tags. Amounts are integer PAISE (card
+// charges carry decimals; ₹1,234.56 → 123456).
+model Transaction {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardNumber    String
+  cardId        String?   @db.Uuid
+  effectiveDate DateTime  @db.Date
+  postingDate   DateTime? @db.Date
+  amountPaise   Int
+  description   String
+  category      String    @default("")
+  status        TxnStatus @default(PENDING)
+  remarks       String    @default("")
+  invoiceName   String    @default("")
+  invoiceKey    String    @default("")
+  invoiceUrl    String    @default("")
+  /** Comma-joined values of the configurable Tag dropdown (e.g. Departments). */
+  tags          String    @default("")
+  /** Accounts sign-off after the invoice lands: reviewed + accounting done. */
+  reviewedAt    DateTime? @db.Timestamptz(3)
+  reviewedBy    String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  card Card? @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  @@index([cardId])
+  @@index([status])
+  @@index([effectiveDate])
+  @@map("transactions")
+}
+
+// App-wide settings the admin edits in the UI: category options, the Tag
+// dropdown's label + options, auto-categorize rules, reminder log.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("app_settings")
+}
+
+model Notification {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @db.Uuid
+  type      String
+  title     String
+  body      String?
+  linkPath  String?
+  readAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model Attachment {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType AttachmentEntity
+  entityId   String           @db.Uuid
+  storageKey String
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  uploadedBy String?          @db.Uuid
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+
+  uploader User? @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@map("attachments")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  action     String
+  actorId    String?  @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
