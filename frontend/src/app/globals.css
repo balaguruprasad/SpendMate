@@ -1,0 +1,318 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* ---- Mesa ink scale (neutral base, faint cool-green cast, hue ~175) ---- */
+  --ink-950: oklch(0.18 0.014 174);
+  --ink-900: oklch(0.245 0.014 174); /* logo charcoal, headings, foreground */
+  --ink-700: oklch(0.365 0.013 178); /* body text */
+  --ink-500: oklch(0.555 0.012 178); /* muted text */
+  --ink-200: oklch(0.925 0.006 175); /* borders */
+  --ink-50: oklch(0.985 0.002 175);
+
+  /* ---- Mesa brand accent (green/lime — the mesaschool pill look) ---- */
+  --brand-lime-500: oklch(0.895 0.105 112); /* light fill, needs ink text */
+  --brand-lime-700: oklch(0.66 0.11 116); /* readable olive — charts on white */
+  --brand-green-600: oklch(0.68 0.14 156); /* clean green — active nav */
+  --brand-mint-600: oklch(0.7 0.135 154);
+
+  /* ---- shadcn system tokens ---- */
+  --background: var(--ink-50);
+  --foreground: var(--ink-900);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--ink-900);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--ink-900);
+  --primary: var(--brand-green-600);
+  --primary-foreground: oklch(0.99 0.01 150);
+  --secondary: oklch(0.965 0.008 175);
+  --secondary-foreground: var(--ink-900);
+  --muted: oklch(0.965 0.008 175);
+  --muted-foreground: var(--ink-500);
+  --accent: oklch(0.95 0.02 156);
+  --accent-foreground: var(--ink-900);
+  --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.62 0.13 156);
+  --success-foreground: oklch(0.99 0.01 150);
+  --warning: oklch(0.74 0.14 70);
+  --warning-foreground: oklch(0.3 0.05 70);
+  --info: oklch(0.58 0.1 235);
+  --info-foreground: oklch(0.99 0.01 235);
+  --border: var(--ink-200);
+  --input: var(--ink-200);
+  --ring: var(--brand-green-600);
+
+  /* Charts — readable series (never the light -500 accent on white) */
+  --chart-1: var(--brand-lime-700);
+  --chart-2: oklch(0.6 0.09 215);
+  --chart-3: var(--brand-mint-600);
+  --chart-4: oklch(0.74 0.14 70);
+  --chart-5: var(--ink-500);
+
+  --radius: 0.625rem;
+  --scrollbar: oklch(0.66 0.05 165);
+
+  /* Sidebar — single finance workspace, barely-there green wash on white */
+  --sidebar: oklch(0.985 0.008 165);
+  --sidebar-foreground: var(--ink-700);
+  --sidebar-primary: var(--brand-green-600);
+  --sidebar-primary-foreground: oklch(0.99 0.01 150);
+  --sidebar-accent: oklch(0.955 0.014 160);
+  --sidebar-accent-foreground: var(--ink-900);
+  --sidebar-border: oklch(0.93 0.01 165);
+  --sidebar-ring: var(--brand-green-600);
+}
+
+.dark {
+  /* Pure neutral grayscale (chroma 0) — brand accents layered on top */
+  --background: oklch(0.16 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: var(--brand-green-600);
+  --primary-foreground: oklch(0.16 0 0);
+  --secondary: oklch(0.27 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.27 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.3 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.7 0.13 156);
+  --success-foreground: oklch(0.16 0 0);
+  --warning: oklch(0.78 0.13 75);
+  --warning-foreground: oklch(0.22 0.04 70);
+  --info: oklch(0.66 0.1 235);
+  --info-foreground: oklch(0.16 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: var(--brand-green-600);
+  --chart-1: oklch(0.7 0.135 156);
+  --chart-2: oklch(0.66 0.1 230);
+  --chart-3: oklch(0.77 0.13 80);
+  --chart-4: oklch(0.7 0.14 45);
+  --chart-5: oklch(0.7 0 0);
+  --scrollbar: oklch(0.45 0 0);
+  --sidebar: oklch(0.18 0 0);
+  --sidebar-foreground: oklch(0.92 0 0);
+  --sidebar-primary: var(--brand-green-600);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.27 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: var(--brand-green-600);
+}
+
+/* ---- Role theming — rebind the accent per workspace shell wrapper ---- */
+/* Each role gets a distinct accent stepped along the Mesa green→teal→mint→lime
+   arc. --primary-foreground stays ink on the light accents (the pill look);
+   charts use a readable -700/-600 tone, never a light -500 line on white. */
+
+/* Creator — mint (reuses the old student accent). */
+.theme-creator {
+  --primary: oklch(0.785 0.135 153);
+  --primary-foreground: var(--ink-900);
+  --ring: oklch(0.785 0.135 153);
+  --sidebar-primary: var(--brand-mint-600);
+  --sidebar-ring: var(--brand-mint-600);
+  --chart-1: var(--brand-mint-600);
+  /* barely-there mint wash on white (9/16/18%) */
+  --sidebar: color-mix(in oklab, var(--brand-mint-600) 9%, oklch(1 0 0));
+  --sidebar-accent: color-mix(in oklab, var(--brand-mint-600) 16%, oklch(1 0 0));
+  --sidebar-border: color-mix(in oklab, var(--brand-mint-600) 18%, oklch(1 0 0));
+}
+
+/* Accounts — teal-leaning green. */
+.theme-accounts {
+  --primary: oklch(0.72 0.115 178);
+  --primary-foreground: var(--ink-900);
+  --ring: oklch(0.72 0.115 178);
+  --sidebar-primary: oklch(0.62 0.1 182);
+  --sidebar-ring: oklch(0.62 0.1 182);
+  --chart-1: oklch(0.58 0.1 185);
+  /* barely-there teal-green wash on white */
+  --sidebar: color-mix(in oklab, oklch(0.62 0.1 182) 9%, oklch(1 0 0));
+  --sidebar-accent: color-mix(in oklab, oklch(0.62 0.1 182) 16%, oklch(1 0 0));
+  --sidebar-border: color-mix(in oklab, oklch(0.62 0.1 182) 18%, oklch(1 0 0));
+}
+
+/* Approver — clean mid green. */
+.theme-approver {
+  --primary: var(--brand-green-600);
+  --primary-foreground: var(--ink-900);
+  --ring: var(--brand-green-600);
+  --sidebar-primary: var(--brand-green-600);
+  --sidebar-ring: var(--brand-green-600);
+  --chart-1: oklch(0.58 0.13 156);
+  /* barely-there green wash on white (7/14/16%) */
+  --sidebar: color-mix(in oklab, var(--brand-green-600) 7%, oklch(1 0 0));
+  --sidebar-accent: color-mix(in oklab, var(--brand-green-600) 14%, oklch(1 0 0));
+  --sidebar-border: color-mix(in oklab, var(--brand-green-600) 16%, oklch(1 0 0));
+}
+
+/* Finance — deeper teal/emerald. */
+.theme-finance {
+  --primary: oklch(0.68 0.13 168);
+  --primary-foreground: var(--ink-900);
+  --ring: oklch(0.68 0.13 168);
+  --sidebar-primary: oklch(0.55 0.11 172);
+  --sidebar-ring: oklch(0.55 0.11 172);
+  --chart-1: oklch(0.52 0.11 170);
+  /* barely-there emerald wash on white */
+  --sidebar: color-mix(in oklab, oklch(0.55 0.11 172) 8%, oklch(1 0 0));
+  --sidebar-accent: color-mix(in oklab, oklch(0.55 0.11 172) 15%, oklch(1 0 0));
+  --sidebar-border: color-mix(in oklab, oklch(0.55 0.11 172) 17%, oklch(1 0 0));
+}
+
+/* Admin — lime (the mesaschool admin accent). */
+.theme-admin {
+  --primary: var(--brand-lime-500);
+  --primary-foreground: var(--ink-900);
+  --ring: var(--brand-lime-500);
+  --sidebar-primary: var(--brand-green-600);
+  --sidebar-ring: var(--brand-green-600);
+  --chart-1: var(--brand-lime-700);
+  /* barely-there green wash on white (7/14/16%) */
+  --sidebar: color-mix(in oklab, var(--brand-green-600) 7%, oklch(1 0 0));
+  --sidebar-accent: color-mix(in oklab, var(--brand-green-600) 14%, oklch(1 0 0));
+  --sidebar-border: color-mix(in oklab, var(--brand-green-600) 16%, oklch(1 0 0));
+}
+
+/* Dark mode keeps the sidebar NEUTRAL black regardless of role — the active-tab
+   indicator still comes from --sidebar-primary (the role accent). */
+.dark .theme-creator,
+.dark .theme-accounts,
+.dark .theme-approver,
+.dark .theme-finance,
+.dark .theme-admin {
+  --sidebar: oklch(0.18 0 0);
+  --sidebar-accent: oklch(0.27 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading tracking-tight;
+  }
+}
+
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Faint top-anchored radial of the brand accent — page headers, auth. */
+@utility soft-accent-wash {
+  background-image: radial-gradient(
+    120% 80% at 50% -20%,
+    color-mix(in oklab, var(--primary) 14%, transparent),
+    transparent 60%
+  );
+}
+
+/* Faint grid — empty states, decorative backdrops. */
+@utility grid-faint {
+  background-image: linear-gradient(
+      to right,
+      color-mix(in oklab, var(--border) 60%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--border) 60%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 2.5rem 2.5rem;
+}
+
+/* Theme-switch circular reveal: disable the default cross-fade, clip only. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Slim, brand-tinted scrollbars everywhere (WebKit; Firefox uses thin). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--scrollbar) 60%, transparent)
+    transparent;
+}
+*::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+*::-webkit-scrollbar-thumb {
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--scrollbar) 55%, transparent);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--scrollbar) 75%, transparent);
+}

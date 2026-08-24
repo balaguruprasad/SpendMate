@@ -1,0 +1,9 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mesa Finance">
+  <rect width="64" height="64" rx="15" fill="#1f7a4d"/>
+  <g fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19 22 H45"/>
+    <path d="M20 45 V31"/>
+    <path d="M20 34 C20 30.5 23.5 30 26.5 30 C30 30 31.5 32.5 31.5 36 V45"/>
+    <path d="M31.5 34 C31.5 30.5 35 30 38 30 C41.5 30 43 32.5 43 36 V45"/>
+  </g>
+</svg>
