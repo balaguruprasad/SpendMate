@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { LogoMark } from "@/components/layout/brand";
 import { ROLE_BASE } from "@/lib/constants";
 import { toast } from "@/lib/toast";
 import { ChangePasswordDialog } from "@/components/layout/change-password-dialog";
@@ -108,9 +109,8 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
         className="sticky top-0 z-40 flex items-center gap-4 px-4 py-3 text-white shadow-md md:px-6"
         style={{ background: GREEN }}
       >
-        <span className="rounded-lg bg-[#a7e0bd] px-3 py-1.5 text-sm font-bold tracking-wide text-[#123527]">
-          MESA
-        </span>
+        {/* Mesa "m" mark — white tile, header green shows through the m. */}
+        <LogoMark className="size-9 shrink-0 bg-white" />
         <div className="min-w-0">
           <p className="text-lg font-semibold leading-tight">SpendMate</p>
           <p className="truncate text-xs text-white/70">
