@@ -364,7 +364,8 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
           <Button className="bg-[#1e4f39] text-white hover:bg-[#173d2c]" onClick={downloadReport}>
             <Download className="size-4" /> Download report
           </Button>
-          {!isAdmin && (me?.myCards.length ?? 0) > 0 && (
+          {/* Anyone with a card manages their own helpers — admins included. */}
+          {(me?.myCards.length ?? 0) > 0 && (
             <Button variant="outline" onClick={() => setHelpersOpen(true)}>
               <UserPlus className="size-4" /> My helpers
             </Button>
