@@ -21,7 +21,7 @@ import { LogoMark } from "@/components/layout/brand";
 import { ROLE_BASE } from "@/lib/constants";
 import { toast } from "@/lib/toast";
 import { ChangePasswordDialog } from "@/components/layout/change-password-dialog";
-import { usePresence } from "@/features/spend";
+import { usePresence, useSpendMe } from "@/features/spend";
 
 const GREEN = "#1e4f39";
 
@@ -67,6 +67,8 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const presence = usePresence();
+  const { data: me } = useSpendMe();
+  const hasCards = (me?.myCards.length ?? 0) > 0;
   const isAdmin = viewer.role === "ADMIN";
   const [pwOpen, setPwOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -114,7 +116,7 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
         <div className="min-w-0">
           <p className="text-lg font-semibold leading-tight">SpendMate</p>
           <p className="truncate text-xs text-white/70">
-            Credit card invoices · {isAdmin ? "Admin view" : "Cardholder view"}
+            Credit card invoices · {isAdmin ? "Admin view" : hasCards ? "Cardholder view" : "Helper view"}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3">

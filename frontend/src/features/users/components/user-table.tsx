@@ -59,6 +59,8 @@ interface UserTableProps {
   emptyAction?: React.ReactNode;
   /** Disable action buttons while a mutation is in flight. */
   pending?: boolean;
+  /** User ids that hold a card — members outside this set show as "Helper". */
+  cardHolderIds?: Set<string>;
 }
 
 export function UserTable({
@@ -70,6 +72,7 @@ export function UserTable({
   currentUserId,
   emptyAction,
   pending = false,
+  cardHolderIds,
 }: UserTableProps) {
   const { page, setPage, pageCount, pageRows, startIndex } = usePagedRows(
     users,
@@ -112,7 +115,14 @@ export function UserTable({
                   {user.email}
                 </TableCell>
                 <TableCell>
-                  <RoleBadge role={user.role} />
+                  <RoleBadge
+                    role={user.role}
+                    label={
+                      user.role === "MEMBER" && cardHolderIds && !cardHolderIds.has(user.id)
+                        ? "Helper"
+                        : undefined
+                    }
+                  />
                 </TableCell>
                 <TableCell>
                   <StatusBadge
