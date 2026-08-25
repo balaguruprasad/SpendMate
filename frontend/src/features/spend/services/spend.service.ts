@@ -67,12 +67,19 @@ export async function deleteCard(id: string): Promise<void> {
   await api.delete(`/spend/cards/${id}`);
 }
 
-export async function addHelper(email: string): Promise<SpendHelper[]> {
-  const rows = (await api.post<Enveloped<{ helperId: string; helperName: string; helperEmail: string }[]>>(
-    "/spend/helpers",
-    { email },
-  )).data;
-  return rows.map((r) => ({ id: r.helperId, name: r.helperName, email: r.helperEmail }));
+export async function addHelper(
+  email: string,
+): Promise<{ helpers: SpendHelper[]; createdAccount: boolean; helperName: string }> {
+  const r = (await api.post<Enveloped<{
+    helpers: { helperId: string; helperName: string; helperEmail: string }[];
+    createdAccount: boolean;
+    helperName: string;
+  }>>("/spend/helpers", { email })).data;
+  return {
+    helpers: r.helpers.map((h) => ({ id: h.helperId, name: h.helperName, email: h.helperEmail })),
+    createdAccount: r.createdAccount,
+    helperName: r.helperName,
+  };
 }
 
 export async function removeHelper(helperId: string): Promise<SpendHelper[]> {

@@ -1,17 +1,16 @@
 # Cloud Build pipeline: build the frontend image, push to Artifact Registry,
 # and deploy to Cloud Run (asia-south1).
 #
-# Submit manually:
-#   gcloud builds submit --config cloudbuild.yaml \
-#     --substitutions=_API_BASE_URL=https://api-finance.mesaschool.co.in/api/v1
+# Submit manually (defaults already point at SpendMate prod):
+#   gcloud builds submit --config cloudbuild.yaml
 #
-# Override any substitution (e.g. _REGION, _SERVICE) on the command line as needed.
+# Override any substitution (e.g. _REGION, _REPO, _SERVICE) on the command line as needed.
 
 substitutions:
   _REGION: asia-south1
-  _REPO: mesa-finance              # Artifact Registry repo (create once, see DEPLOY.md)
-  _SERVICE: mesa-finance-frontend  # Cloud Run service name
-  _API_BASE_URL: https://api-finance.mesaschool.co.in/api/v1
+  _REPO: mesa-finance              # Artifact Registry repo — override if SpendMate uses its own
+  _SERVICE: spendmate-frontend     # Cloud Run service name
+  _API_BASE_URL: https://spendmate-backend.mesaschool.co.in/api/v1
   _USE_MOCK: "false"
 
 steps:
