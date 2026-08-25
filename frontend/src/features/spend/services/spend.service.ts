@@ -97,7 +97,9 @@ export async function saveSettings(input: SpendSettings): Promise<SpendSettings>
   return (await api.put<Enveloped<SpendSettings>>("/spend/settings", input)).data;
 }
 
-export async function sendReminders(userIds: string[] = []): Promise<{ sent: string[] }> {
+export async function sendReminders(
+  userIds: string[] = [],
+): Promise<{ sent: string[]; emailed?: number }> {
   return (await api.post<Enveloped<{ sent: string[]; emailed?: number }>>("/spend/reminders/send", { userIds })).data;
 }
 

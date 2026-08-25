@@ -18,6 +18,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { LogoMark } from "@/components/layout/brand";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { ROLE_BASE } from "@/lib/constants";
 import { toast } from "@/lib/toast";
 import { ChangePasswordDialog } from "@/components/layout/change-password-dialog";
@@ -137,6 +138,10 @@ export function SpendShell({ children }: { children: React.ReactNode }) {
               {online.length} here
             </span>
           </div>
+          {/* In-app reminders land here — the bell polls the feed. */}
+          <span className="[&_button]:text-white [&_button:hover]:bg-white/20">
+            <NotificationBell />
+          </span>
           <div className="group relative">
             <button
               type="button"
