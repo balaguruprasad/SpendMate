@@ -182,7 +182,8 @@ export function useSendReminders() {
       void invalidate();
       toast.success(
         r.sent.length
-          ? `Reminders sent to ${r.sent.length} cardholder(s).`
+          ? `Reminders sent to ${r.sent.length} cardholder(s)` +
+              (r.emailed ? ` — ${r.emailed} email(s) delivered.` : " (in-app only — email not configured).")
           : "Nobody has pending charges — no reminders needed.",
       );
     },
