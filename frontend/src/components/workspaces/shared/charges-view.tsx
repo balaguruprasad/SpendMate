@@ -498,7 +498,9 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                           Undo
                         </button>
                       )}
-                      {!r.reviewed && (r.category === "" || r.category === "Others") && (
+                      {/* Suggest penny-marking only while the charge still
+                          needs action — done rows are done. */}
+                      {!r.reviewed && r.pending && (r.category === "" || r.category === "Others") && (
                         <button
                           type="button"
                           className="rounded-full border border-[#1e4f39]/40 px-2 py-0.5 text-xs text-[#1e4f39] hover:bg-[#e7f2ec]"
