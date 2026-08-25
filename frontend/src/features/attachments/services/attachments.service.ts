@@ -86,15 +86,32 @@ async function uploadSigned(
   return { gcsKey, fileName: file.name, mimeType: file.type, sizeBytes: file.size };
 }
 
+/** Once a direct-to-GCS PUT dies on CORS/network, stick to proxy uploads for
+ * the session — the API route works without any bucket CORS config. */
+let signedBlocked = false;
+
+function isNetworkError(e: unknown): boolean {
+  return (
+    e instanceof TypeError ||
+    (e instanceof Error && /failed to fetch|network error/i.test(e.message))
+  );
+}
+
 /** Upload a single file using whichever mode the backend reports. */
 export async function upload(
   file: File,
   entityType: AttachmentEntityType,
 ): Promise<UploadedFile> {
   const { useSignedUrls } = await getConfig();
-  return useSignedUrls
-    ? uploadSigned(file, entityType)
-    : uploadProxy(file, entityType);
+  if (useSignedUrls && !signedBlocked) {
+    try {
+      return await uploadSigned(file, entityType);
+    } catch (e) {
+      if (!isNetworkError(e)) throw e;
+      signedBlocked = true; // CORS-blocked bucket — fall through to proxy
+    }
+  }
+  return uploadProxy(file, entityType);
 }
 
 /** Reported upload progress as a whole-number percentage (0–100). */
@@ -232,9 +249,16 @@ export async function uploadWithProgress(
   signal?: AbortSignal,
 ): Promise<UploadedFile> {
   const { useSignedUrls } = await getConfig();
-  return useSignedUrls
-    ? uploadSignedWithProgress(file, entityType, onProgress, signal)
-    : uploadProxyWithProgress(file, entityType, onProgress, signal);
+  if (useSignedUrls && !signedBlocked) {
+    try {
+      return await uploadSignedWithProgress(file, entityType, onProgress, signal);
+    } catch (e) {
+      if (!isNetworkError(e) || signal?.aborted) throw e;
+      signedBlocked = true; // CORS-blocked bucket — retry through the API
+      onProgress(0);
+    }
+  }
+  return uploadProxyWithProgress(file, entityType, onProgress, signal);
 }
 
 /** Register an already-uploaded object as an attachment row on an existing entity. */
