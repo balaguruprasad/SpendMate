@@ -11,7 +11,6 @@
  * old app's banner said.
  */
 import { useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Check, Download, Eye, Pencil, Upload, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -233,12 +232,18 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
             Seeing what <span className="font-semibold text-foreground">{viewAsName}</span> sees —
             uploads and remarks you make here are saved to their charges.
           </p>
-          <Link
-            href={chargesBase}
+          {/* Hard navigation — a client-side Link to the same pathname with
+              only the ?as= query removed does not navigate in this Next
+              version (mirrors how view-as is entered). */}
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = chargesBase;
+            }}
             className="inline-flex items-center gap-1 rounded-full border border-[#1e4f39] px-3 py-1 text-xs font-medium text-[#1e4f39] hover:bg-[#e7f2ec]"
           >
             <X className="size-3.5" /> Exit — back to all charges
-          </Link>
+          </button>
         </div>
       )}
 
