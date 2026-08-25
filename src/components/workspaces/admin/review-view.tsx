@@ -10,6 +10,13 @@ import { useMemo, useState } from "react";
 import { Check, Eye, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TableSkeleton } from "@/components/shared/loading";
 import { TablePagination } from "@/components/shared/table-pagination";
 import { usePagedRows } from "@/hooks/use-paged-rows";
@@ -28,6 +35,13 @@ export function ReviewView() {
   const [tab, setTab] = useState<"todo" | "done">("todo");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Per-column filters (like the transactions table).
+  const [fMonth, setFMonth] = useState("all");
+  const [fHolder, setFHolder] = useState("all");
+  const [fDesc, setFDesc] = useState("");
+  const [fCat, setFCat] = useState("all");
+  const [fTag, setFTag] = useState("all");
+  const [fRem, setFRem] = useState("");
 
   const { todo, done } = useMemo(() => {
     const rows = (data?.rows ?? []).filter((r) => !r.settlement && !r.pending);
@@ -37,19 +51,42 @@ export function ReviewView() {
     };
   }, [data?.rows]);
 
+  // Filter option lists, derived from the data itself.
+  const { months, holders, cats, tags } = useMemo(() => {
+    const all = [...todo, ...done];
+    return {
+      months: [...new Set(all.map((r) => r.effectiveDate.slice(0, 7)))].sort().reverse(),
+      holders: [...new Set(all.map((r) => r.cardholder))].sort(),
+      cats: [...new Set(all.map((r) => r.category).filter(Boolean))].sort(),
+      tags: [...new Set(all.flatMap((r) => r.tags.split(",").map((s) => s.trim()).filter(Boolean)))].sort(),
+    };
+  }, [todo, done]);
+
   const visible = useMemo(() => {
     const source = tab === "todo" ? todo : done;
     const q = query.trim().toLowerCase();
-    if (!q) return source;
-    return source.filter(
-      (r) =>
+    const fd = fDesc.trim().toLowerCase();
+    const fr = fRem.trim().toLowerCase();
+    return source.filter((r) => {
+      if (fMonth !== "all" && r.effectiveDate.slice(0, 7) !== fMonth) return false;
+      if (fHolder !== "all" && r.cardholder !== fHolder) return false;
+      if (fd && !r.description.toLowerCase().includes(fd)) return false;
+      if (fCat !== "all" && r.category !== fCat) return false;
+      if (fTag !== "all") {
+        const rowTags = r.tags.split(",").map((s) => s.trim());
+        if (fTag === "__none" ? r.tags.trim() !== "" : !rowTags.includes(fTag)) return false;
+      }
+      if (fr && !r.remarks.toLowerCase().includes(fr)) return false;
+      if (!q) return true;
+      return (
         r.description.toLowerCase().includes(q) ||
         r.cardholder.toLowerCase().includes(q) ||
         r.category.toLowerCase().includes(q) ||
         r.tags.toLowerCase().includes(q) ||
-        r.remarks.toLowerCase().includes(q),
-    );
-  }, [tab, todo, done, query]);
+        r.remarks.toLowerCase().includes(q)
+      );
+    });
+  }, [tab, todo, done, query, fMonth, fHolder, fDesc, fCat, fTag, fRem]);
 
   const { page, setPage, pageCount, pageRows } = usePagedRows(visible, 20);
 
@@ -154,13 +191,94 @@ export function ReviewView() {
                     title={allVisibleSelected ? "Clear selection" : "Select all (matching filter)"}
                   />
                 </th>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Cardholder</th>
-                <th className="px-4 py-3 font-medium">Description</th>
+                <th className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    Date
+                    <Select value={fMonth} onValueChange={(v) => { setFMonth(v); setPage(1); }}>
+                      <SelectTrigger className="h-6 w-24 px-2 text-xs font-normal" size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        {months.map((m) => (
+                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </span>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    Cardholder
+                    <Select value={fHolder} onValueChange={(v) => { setFHolder(v); setPage(1); }}>
+                      <SelectTrigger className="h-6 w-20 px-2 text-xs font-normal" size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        {holders.map((h) => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </span>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    Description
+                    <Input
+                      placeholder="Filter…"
+                      className="h-6 w-28 px-2 text-xs font-normal"
+                      value={fDesc}
+                      onChange={(e) => { setFDesc(e.target.value); setPage(1); }}
+                    />
+                  </span>
+                </th>
                 <th className="px-4 py-3 text-right font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Category</th>
-                <th className="px-4 py-3 font-medium">Department</th>
-                <th className="px-4 py-3 font-medium">Remarks</th>
+                <th className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    Category
+                    <Select value={fCat} onValueChange={(v) => { setFCat(v); setPage(1); }}>
+                      <SelectTrigger className="h-6 w-16 px-2 text-xs font-normal" size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        {cats.map((ct) => (
+                          <SelectItem key={ct} value={ct}>{ct}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </span>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    Department
+                    <Select value={fTag} onValueChange={(v) => { setFTag(v); setPage(1); }}>
+                      <SelectTrigger className="h-6 w-16 px-2 text-xs font-normal" size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="__none">— blank —</SelectItem>
+                        {tags.map((t) => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </span>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    Remarks
+                    <Input
+                      placeholder="Filter…"
+                      className="h-6 w-24 px-2 text-xs font-normal"
+                      value={fRem}
+                      onChange={(e) => { setFRem(e.target.value); setPage(1); }}
+                    />
+                  </span>
+                </th>
                 <th className="px-4 py-3 font-medium">Invoice</th>
                 <th className="px-4 py-3 font-medium">Action</th>
               </tr>
