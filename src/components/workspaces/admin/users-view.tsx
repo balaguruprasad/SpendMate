@@ -48,6 +48,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ROLE_LABEL } from "@/lib/config/navigation";
+import { useSpendCards } from "@/features/spend";
 import {
   UserTable,
   UserForm,
@@ -133,6 +134,13 @@ export function AdminUsersView() {
   });
 
   const allUsers = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
+
+  // Members without a card of their own are helpers — label them as such.
+  const { data: cards } = useSpendCards();
+  const cardHolderIds = useMemo(
+    () => new Set((cards ?? []).map((c) => c.holderId)),
+    [cards],
+  );
 
   const users = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -407,6 +415,7 @@ export function AdminUsersView() {
         ) : (
           <UserTable
             users={users}
+            cardHolderIds={cardHolderIds}
             pending={
               deleteUser.isPending ||
               resetPassword.isPending ||

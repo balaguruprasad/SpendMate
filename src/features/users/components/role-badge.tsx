@@ -17,14 +17,17 @@ const ROLE_TONE: Record<UserRole, StatusTone> = {
 
 export function RoleBadge({
   role,
+  label,
   className,
 }: {
   role: UserRole;
+  /** Override the canonical role label (e.g. "Helper" for card-less members). */
+  label?: string;
   className?: string;
 }) {
   return (
     <StatusBadge
-      label={ROLE_LABEL[role]}
+      label={label ?? ROLE_LABEL[role]}
       tone={ROLE_TONE[role]}
       className={className}
     />
