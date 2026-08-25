@@ -130,9 +130,13 @@ export function useAddHelper() {
   const invalidate = useInvalidateSpend();
   return useMutation({
     mutationFn: (email: string) => service.addHelper(email),
-    onSuccess: () => {
+    onSuccess: (r) => {
       void invalidate();
-      toast.success("Helper added — they can now see and complete your charges.");
+      toast.success(
+        r.createdAccount
+          ? `Account created for ${r.helperName} — they sign in with the default password Mesa@2026! and should change it after first login.`
+          : "Helper added — they can now see and complete your charges.",
+      );
     },
     onError: (error) => toast.error(errorMessage(error, "Could not add the helper.")),
   });
@@ -255,12 +259,24 @@ export async function openInvoice(invoiceUrl: string): Promise<void> {
     return;
   }
   const win = window.open("", "_blank");
+  const path = invoiceUrl.replace(/^\/api\/v1/, "");
   try {
-    const blob = await api.getBlob(invoiceUrl.replace(/^\/api\/v1/, ""));
-    const url = URL.createObjectURL(blob);
-    if (win) win.location.href = url;
-    else window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    // In signed-URL mode (production) the download route 302s to GCS, which a
+    // fetch can't follow cross-origin — ask for the URL as JSON and navigate
+    // the tab to it. Proxy mode (local) returns url: null → stream the blob.
+    const { url } = (
+      await api.get<{ data: { url: string | null } }>(`${path}?json=1`)
+    ).data;
+    if (url) {
+      if (win) win.location.href = url;
+      else window.open(url, "_blank", "noopener");
+      return;
+    }
+    const blob = await api.getBlob(path);
+    const objectUrl = URL.createObjectURL(blob);
+    if (win) win.location.href = objectUrl;
+    else window.open(objectUrl, "_blank");
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   } catch (error) {
     win?.close();
     toast.error(error instanceof Error ? error.message : "Could not open the invoice.");
