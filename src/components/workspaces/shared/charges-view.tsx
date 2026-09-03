@@ -484,17 +484,48 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                   </td>
                   <td className="px-4 py-1">
                     {/* Categories are auto-assigned (GST / markup) or default
-                        to Others — nobody hand-picks GST/Markup. The only
-                        manual move is the Penny-testing toggle. */}
+                        to Others. Members' only manual move is the
+                        Penny-testing toggle; admins (Bala / accounts) can
+                        re-pick any category. */}
                     <span className="flex items-center gap-1.5">
-                      {r.category ? (
+                      {isAdmin ? (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="whitespace-nowrap rounded-full border bg-muted px-2.5 py-0.5 text-xs hover:bg-accent"
+                              title="Change category"
+                            >
+                              {r.category || "— pick —"}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-2" align="start">
+                            <div className="flex flex-wrap gap-1.5">
+                              {categories.map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => setCategory(r, c)}
+                                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                                    r.category === c
+                                      ? "border-[#1e4f39] bg-[#1e4f39] text-white"
+                                      : "hover:bg-muted"
+                                  }`}
+                                >
+                                  {c}
+                                </button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      ) : r.category ? (
                         <span className="whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs">
                           {r.category}
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
-                      {!r.reviewed && r.category === "Penny testing" && (
+                      {!isAdmin && !r.reviewed && r.category === "Penny testing" && (
                         <button
                           type="button"
                           className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
@@ -506,7 +537,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                       )}
                       {/* Suggest penny-marking only while the charge still
                           needs action — done rows are done. */}
-                      {!r.reviewed && r.pending && (r.category === "" || r.category === "Others") && (
+                      {!isAdmin && !r.reviewed && r.pending && (r.category === "" || r.category === "Others") && (
                         <button
                           type="button"
                           className="rounded-full border border-[#1e4f39]/40 px-2 py-0.5 text-xs text-[#1e4f39] hover:bg-[#e7f2ec]"
