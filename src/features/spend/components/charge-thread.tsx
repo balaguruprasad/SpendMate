@@ -6,7 +6,8 @@
  * breakup — and puts the charge on hold; the cardholder (or whoever helps
  * them) answers here. Holds and releases appear in the same thread as
  * one-line markers, so the reason sits next to the reply rather than in a
- * field nobody reads. Both sides get a notification and an email. */
+ * field nobody reads. Both sides get an in-app notification; the weekly
+ * reminder remains the only SpendMate mail that reaches an inbox. */
 import { useEffect, useRef, useState } from "react";
 import { PauseCircle, PlayCircle, SendHorizonal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -113,7 +114,7 @@ export function ChargeThread({
           {isLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
           {!isLoading && (comments ?? []).length === 0 && (
             <p className="py-6 text-center text-xs text-muted-foreground">
-              Nothing here yet. Ask for whatever is missing and the cardholder gets an email.
+              Nothing here yet. Ask for whatever is missing — the cardholder gets a notification.
             </p>
           )}
           {(comments ?? []).map((c) => {
