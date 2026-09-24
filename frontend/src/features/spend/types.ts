@@ -27,7 +27,28 @@ export interface SpendTransaction {
   reviewed: boolean;
   /** Card settlement credit (PAYMENT RECEIVED) — shown under Settlements, not in spends. */
   settlement: boolean;
+  /** Accounts parked this charge: something is wrong or missing and the
+   * cardholder has to answer before it can be signed off. */
+  onHold: boolean;
+  holdReason: string;
+  heldAt: string | null;
+  commentCount: number;
+  lastCommentAt: string | null;
   updatedAt: string;
+}
+
+export type TxnCommentKind = "COMMENT" | "HOLD" | "RELEASE";
+
+/** One line of the conversation on a charge. */
+export interface SpendComment {
+  id: string;
+  transactionId: string;
+  authorId: string;
+  authorName: string;
+  authorEmail: string;
+  kind: TxnCommentKind;
+  body: string;
+  createdAt: string;
 }
 
 export interface SpendSummaryEntry {

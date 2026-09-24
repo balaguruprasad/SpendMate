@@ -283,3 +283,46 @@ export async function openInvoice(invoiceUrl: string): Promise<void> {
     toast.error(error instanceof Error ? error.message : "Could not open the invoice.");
   }
 }
+
+// ── Hold + charge thread ────────────────────────────────────────────────────
+
+/** Accounts parks a charge (or lets it go again). */
+export function useSetHold() {
+  const invalidate = useInvalidateSpend();
+  return useMutation({
+    mutationFn: ({ id, onHold, reason }: { id: string; onHold: boolean; reason?: string }) =>
+      service.setHold(id, { onHold, reason }),
+    onSuccess: (_row, vars) => {
+      void invalidate();
+      toast.success(
+        vars.onHold
+          ? "Put on hold — the cardholder has been notified."
+          : "Hold released.",
+      );
+    },
+    onError: (error) => toast.error(errorMessage(error, "Could not update the hold")),
+  });
+}
+
+export function useChargeComments(txnId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.spend.comments(txnId ?? ""),
+    queryFn: () => service.listComments(txnId!),
+    enabled: Boolean(txnId),
+  });
+}
+
+export function useAddComment() {
+  const queryClient = useQueryClient();
+  const invalidate = useInvalidateSpend();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) => service.addComment(id, body),
+    onSuccess: (comments, vars) => {
+      // Seed the thread straight from the response — the reply shows up
+      // without a second round trip.
+      queryClient.setQueryData(queryKeys.spend.comments(vars.id), comments);
+      void invalidate();
+    },
+    onError: (error) => toast.error(errorMessage(error, "Could not post that message")),
+  });
+}
