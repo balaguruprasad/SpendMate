@@ -12,7 +12,10 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/utils";
 import { formatRelative } from "@/lib/format";
+import { ROLE_BASE } from "@/lib/constants";
+import { useAuth } from "@/hooks/use-auth";
 import type { NotificationView } from "../types";
+import type { UserRole } from "@/types";
 import {
   useMarkAllRead,
   useMarkNotificationRead,
@@ -25,6 +28,17 @@ interface NotificationListProps {
   onNavigate?: () => void;
 }
 
+/**
+ * Older notifications were written with a bare "/charges" link, which is not a
+ * route — charges live under the workspace you log into. Resolve those against
+ * the viewer's own base rather than rewriting notifications already sent.
+ */
+function resolveLink(linkPath: string | null, role: UserRole): string | undefined {
+  if (!linkPath) return undefined;
+  if (linkPath.startsWith("/admin/") || linkPath.startsWith("/member/")) return linkPath;
+  return `${ROLE_BASE[role]}${linkPath}`;
+}
+
 export function NotificationList({
   notifications,
   unreadCount,
@@ -32,6 +46,7 @@ export function NotificationList({
 }: NotificationListProps) {
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllRead();
+  const { user } = useAuth();
 
   if (notifications.length === 0) {
     return (
@@ -60,7 +75,7 @@ export function NotificationList({
       <ul className="flex max-h-96 flex-col overflow-y-auto">
         {notifications.map((notification) => {
           const isRead = Boolean(notification.readAt);
-          const href = notification.linkPath ?? undefined;
+          const href = resolveLink(notification.linkPath, user.role);
 
           const body = (
             <div className="flex items-start gap-3">
