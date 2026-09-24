@@ -7,7 +7,8 @@
  * after that the cardholder can no longer change it.
  */
 import { useMemo, useState } from "react";
-import { Check, Eye, Undo2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Check, Eye, MessageSquare, PauseCircle, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,13 +27,17 @@ import {
   useSetReviewed,
   useSetReviewedBulk,
   useSpendTransactions,
+  ChargeThread,
+  type SpendTransaction,
 } from "@/features/spend";
 
 export function ReviewView() {
+  const { user } = useAuth();
   const { data, isLoading } = useSpendTransactions();
   const setReviewed = useSetReviewed();
   const bulk = useSetReviewedBulk();
-  const [tab, setTab] = useState<"todo" | "done">("todo");
+  const [tab, setTab] = useState<"todo" | "hold" | "done">("todo");
+  const [threadFor, setThreadFor] = useState<SpendTransaction | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Per-column filters (like the transactions table).
@@ -43,17 +48,22 @@ export function ReviewView() {
   const [fTag, setFTag] = useState("all");
   const [fRem, setFRem] = useState("");
 
-  const { todo, done } = useMemo(() => {
-    const rows = (data?.rows ?? []).filter((r) => !r.settlement && !r.pending);
+  const { todo, hold, done } = useMemo(() => {
+    // A held charge counts as pending (the cardholder owes an answer), so it
+    // has to be pulled back in explicitly rather than filtered out with the
+    // rest of the pending pile.
+    const all = (data?.rows ?? []).filter((r) => !r.settlement);
+    const rows = all.filter((r) => !r.pending || r.onHold);
     return {
-      todo: rows.filter((r) => !r.reviewed),
+      todo: rows.filter((r) => !r.reviewed && !r.onHold),
+      hold: rows.filter((r) => !r.reviewed && r.onHold),
       done: rows.filter((r) => r.reviewed),
     };
   }, [data?.rows]);
 
   // Filter option lists, derived from the data itself.
   const { months, holders, cats, tags } = useMemo(() => {
-    const all = [...todo, ...done];
+    const all = [...todo, ...hold, ...done];
     return {
       months: [...new Set(all.map((r) => r.effectiveDate.slice(0, 7)))].sort().reverse(),
       holders: [...new Set(all.map((r) => r.cardholder))].sort(),
@@ -63,7 +73,7 @@ export function ReviewView() {
   }, [todo, done]);
 
   const visible = useMemo(() => {
-    const source = tab === "todo" ? todo : done;
+    const source = tab === "todo" ? todo : tab === "hold" ? hold : done;
     const q = query.trim().toLowerCase();
     const fd = fDesc.trim().toLowerCase();
     const fr = fRem.trim().toLowerCase();
@@ -86,7 +96,7 @@ export function ReviewView() {
         r.remarks.toLowerCase().includes(q)
       );
     });
-  }, [tab, todo, done, query, fMonth, fHolder, fDesc, fCat, fTag, fRem]);
+  }, [tab, todo, hold, done, query, fMonth, fHolder, fDesc, fCat, fTag, fRem]);
 
   const { page, setPage, pageCount, pageRows } = usePagedRows(visible, 20);
 
@@ -126,6 +136,7 @@ export function ReviewView() {
         {(
           [
             ["todo", `To review (${todo.length})`],
+            ["hold", `On hold (${hold.length})`],
             ["done", `Completed (${done.length})`],
           ] as const
         ).map(([key, label]) => (
@@ -341,7 +352,21 @@ export function ReviewView() {
                     )}
                   </td>
                   <td className="whitespace-nowrap px-4 py-1.5">
-                    {tab === "todo" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mr-1.5 h-7 px-2.5 text-xs"
+                      onClick={() => setThreadFor(r)}
+                      title={r.onHold ? r.holdReason : "Ask the cardholder about this charge"}
+                    >
+                      {r.onHold ? (
+                        <PauseCircle className="size-3.5 text-destructive" />
+                      ) : (
+                        <MessageSquare className="size-3.5" />
+                      )}
+                      {r.commentCount > 0 ? r.commentCount : ""}
+                    </Button>
+                    {tab !== "done" ? (
                       <Button
                         size="sm"
                         className="h-7 bg-[#1e4f39] px-2.5 text-xs text-white hover:bg-[#173d2c]"
@@ -369,6 +394,12 @@ export function ReviewView() {
         )}
       </div>
       <TablePagination page={page} pageCount={pageCount} onPageChange={setPage} />
+      <ChargeThread
+        charge={threadFor && (data?.rows ?? []).find((r) => r.id === threadFor.id) ? (data?.rows ?? []).find((r) => r.id === threadFor.id)! : threadFor}
+        isAdmin
+        currentUserId={user.id}
+        onClose={() => setThreadFor(null)}
+      />
     </div>
   );
 }

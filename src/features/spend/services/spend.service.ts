@@ -2,6 +2,7 @@ import { api } from "@/lib/api/client";
 import type { UploadedFile } from "@/features/attachments";
 import type {
   ImportRow,
+  SpendComment,
   SpendCard,
   SpendHelper,
   SpendMe,
@@ -154,4 +155,25 @@ export interface LoginActivityRow {
 
 export async function loginActivity(): Promise<LoginActivityRow[]> {
   return (await api.get<Enveloped<LoginActivityRow[]>>("/spend/logins")).data;
+}
+
+// ── Hold + charge thread ────────────────────────────────────────────────────
+
+/** Park a charge with a reason the cardholder can act on, or resume it. */
+export async function setHold(
+  id: string,
+  input: { onHold: boolean; reason?: string },
+): Promise<SpendTransaction> {
+  return (await api.post<Enveloped<SpendTransaction>>(`/spend/transactions/${id}/hold`, input))
+    .data;
+}
+
+export async function listComments(id: string): Promise<SpendComment[]> {
+  return (await api.get<Enveloped<SpendComment[]>>(`/spend/transactions/${id}/comments`)).data;
+}
+
+export async function addComment(id: string, body: string): Promise<SpendComment[]> {
+  return (
+    await api.post<Enveloped<SpendComment[]>>(`/spend/transactions/${id}/comments`, { body })
+  ).data;
 }

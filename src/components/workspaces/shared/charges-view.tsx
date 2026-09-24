@@ -11,8 +11,19 @@
  * old app's banner said.
  */
 import { useMemo, useRef, useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
 import { useSearchParams } from "next/navigation";
-import { Check, Download, Eye, Pencil, Upload, UserPlus, X } from "lucide-react";
+import {
+  Check,
+  Download,
+  Eye,
+  MessageSquare,
+  PauseCircle,
+  Pencil,
+  Upload,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +64,7 @@ import {
   useSpendTransactions,
   useUpdateTransaction,
   type SpendTransaction,
+  ChargeThread,
 } from "@/features/spend";
 import { ROLE_BASE } from "@/lib/constants";
 
@@ -79,6 +91,7 @@ function Tile({
 }
 
 export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
+  const { user } = useAuth();
   const { data: me } = useSpendMe();
   const { data, isLoading } = useSpendTransactions();
   const update = useUpdateTransaction();
@@ -89,7 +102,8 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
   const viewAsId = isAdmin ? searchParams.get("as") : null;
   const chargesBase = `${ROLE_BASE[isAdmin ? "ADMIN" : "MEMBER"]}/charges`;
 
-  const [pill, setPill] = useState<"all" | "pending" | "done">("all");
+  const [pill, setPill] = useState<"all" | "pending" | "hold" | "done">("all");
+  const [threadFor, setThreadFor] = useState<SpendTransaction | null>(null);
   const [query, setQuery] = useState("");
   // Column filters (G-Sheet style): description text, category + tag dropdowns.
   const [fDesc, setFDesc] = useState("");
@@ -120,11 +134,12 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
 
   const stats = useMemo(() => {
     const pending = scoped.filter((r) => r.pending).length;
+    const onHold = scoped.filter((r) => r.onHold).length;
     const submitted = scoped.filter((r) => r.status === "SUBMITTED").length;
     const noInvoice = scoped.filter((r) => r.status === "NO_INVOICE_NEEDED").length;
     const toReview = scoped.filter((r) => !r.pending && !r.reviewed).length;
     const total = scoped.reduce((s, r) => s + r.amountPaise, 0);
-    return { pending, submitted, noInvoice, toReview, count: scoped.length, total };
+    return { pending, onHold, submitted, noInvoice, toReview, count: scoped.length, total };
   }, [scoped]);
 
   // Admin overview: per-cardholder roll-up (click a row to "view as").
@@ -151,6 +166,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
     const fd = fDesc.trim().toLowerCase();
     return scoped.filter((r) => {
       if (pill === "pending" && !r.pending) return false;
+      if (pill === "hold" && !r.onHold) return false;
       if (pill === "done" && r.pending) return false;
       if (fd && !r.description.toLowerCase().includes(fd)) return false;
       if (fCat !== "all") {
@@ -332,6 +348,9 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
           [
             ["all", `All (${stats.count})`],
             ["pending", `Pending (${stats.pending})`],
+            ...(stats.onHold > 0 || pill === "hold"
+              ? ([["hold", `On hold (${stats.onHold})`]] as const)
+              : []),
             ["done", `Done (${stats.count - stats.pending})`],
           ] as const
         ).map(([key, label]) => (
@@ -455,6 +474,7 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                 )}
                 <th className="px-4 py-2 font-medium">Remarks</th>
                 <th className="px-4 py-2 font-medium">Invoice</th>
+                <th className="w-10 px-2 py-2" title="Conversation with accounts" />
                 <th className="w-10 px-2 py-2" title="Reviewed by accounts" />
               </tr>
             </thead>
@@ -594,6 +614,17 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                     </td>
                   )}
                   <td className="max-w-64 px-4 py-1">
+                    {r.onHold && (
+                      <button
+                        type="button"
+                        onClick={() => setThreadFor(r)}
+                        className="mb-0.5 flex items-center gap-1 text-left text-xs font-medium text-destructive hover:underline"
+                        title={r.holdReason}
+                      >
+                        <PauseCircle className="size-3 shrink-0" />
+                        <span className="truncate">On hold: {r.holdReason}</span>
+                      </button>
+                    )}
                     {r.reviewed && !isAdmin ? (
                       <span className="block truncate text-xs text-muted-foreground" title={r.remarks}>
                         {r.remarks || "—"}
@@ -659,6 +690,23 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
                     </div>
                   </td>
                   <td className="px-2 py-1">
+                    <button
+                      type="button"
+                      onClick={() => setThreadFor(r)}
+                      className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                      title={
+                        r.onHold
+                          ? `On hold: ${r.holdReason}`
+                          : "Message accounts about this charge"
+                      }
+                    >
+                      <MessageSquare
+                        className={`size-3.5 ${r.onHold ? "text-destructive" : ""}`}
+                      />
+                      {r.commentCount > 0 ? r.commentCount : ""}
+                    </button>
+                  </td>
+                  <td className="px-2 py-1">
                     {r.reviewed && (
                       <span
                         className="inline-flex size-5 items-center justify-center rounded-full bg-[#1e4f39] text-white"
@@ -675,6 +723,16 @@ export function ChargesView({ isAdmin }: { isAdmin: boolean }) {
         )}
       </div>
       <TablePagination page={page} pageCount={pageCount} onPageChange={setPage} />
+
+      {/* The conversation with accounts — where a hold gets resolved. */}
+      <ChargeThread
+        charge={
+          threadFor ? ((data?.rows ?? []).find((r) => r.id === threadFor.id) ?? threadFor) : null
+        }
+        isAdmin={isAdmin}
+        currentUserId={user.id}
+        onClose={() => setThreadFor(null)}
+      />
 
       {/* Remarks dialog */}
       <Dialog open={remarksFor !== null} onOpenChange={(o) => !o && setRemarksFor(null)}>
